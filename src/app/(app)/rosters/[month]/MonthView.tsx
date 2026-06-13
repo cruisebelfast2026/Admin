@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { TABS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 import type { Settings, Ship, Staff } from "@/lib/types";
@@ -30,6 +30,9 @@ export interface MonthContext {
   patchShip: (ship: Ship, patch: Partial<Ship>) => Promise<void>;
   removeShip: (ship: Ship) => Promise<void>;
   refreshShips: () => Promise<void>;
+  /** Bumped whenever shift/assignment data changes, to re-sync sibling tabs. */
+  syncVersion: number;
+  bumpSync: () => void;
   toast: (msg: string) => void;
 }
 
@@ -50,6 +53,8 @@ export function MonthView({
 }) {
   const [tab, setTab] = useState<(typeof TABS)[number]["slug"]>("rosters");
   const [ships, setShips] = useState<Ship[]>(initialShips);
+  const [syncVersion, setSyncVersion] = useState(0);
+  const bumpSync = useCallback(() => setSyncVersion((v) => v + 1), []);
   const { show, node } = useToast();
 
   const patchShip = useCallback(
@@ -84,6 +89,25 @@ export function MonthView({
     [refreshShips],
   );
 
+  // Supabase Realtime — keep sibling tabs live across clients (Section 16.1
+  // two-way sync). Remote shift/availability changes re-sync the grids; remote
+  // ship changes refresh the month.
+  useEffect(() => {
+    const supabase = createClient();
+    if (!supabase) return;
+    const channel = supabase
+      .channel(`month-${year}-${monthValue}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "shifts" }, () => bumpSync())
+      .on("postgres_changes", { event: "*", schema: "public", table: "availability" }, () => bumpSync())
+      .on("postgres_changes", { event: "*", schema: "public", table: "ships" }, () => {
+        void refreshShips();
+      })
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [year, monthValue, bumpSync, refreshShips]);
+
   const ctx: MonthContext = {
     ships,
     staff,
@@ -95,6 +119,8 @@ export function MonthView({
     patchShip,
     removeShip,
     refreshShips,
+    syncVersion,
+    bumpSync,
     toast: show,
   };
 

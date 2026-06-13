@@ -6,6 +6,26 @@ tab of the application.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.9.0] — 2026-06-13 — Integration audit fixes & live sync
+
+### Fixed
+- **Availability import no longer fails on AM+EV / AM+PM+EV cells**: the
+  `availability.period` CHECK constraint now accepts every valid combination
+  (migration `0005`), and the type/tests cover it.
+- **Empty time/date strings are coerced to null before writing** to Postgres
+  `time`/`date` columns across Ship Requests, the Rota panel (shifts &
+  shuttles) and Settings — previously a cleared field aborted the save.
+- **`NaN` no longer written to integer columns** (bus count / frequency).
+- **Assigned, Volunteer and Rota tabs now re-sync** after a save via a shared
+  sync signal, so assignments/confirmations no longer go stale between tabs.
+- Settings page uses `maybeSingle()` so a fresh DB (no settings row) doesn't
+  throw; Ship Requests upsert strips server-managed columns.
+
+### Added
+- **Supabase Realtime** subscription per month (migration `0006` adds `shifts`,
+  `availability`, `ships` to the `supabase_realtime` publication) — live
+  two-way sync of shifts/availability/ship changes across open clients.
+
 ## [0.8.0] — 2026-06-13 — Cloudflare deployment
 
 ### Added

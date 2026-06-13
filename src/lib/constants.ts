@@ -57,7 +57,14 @@ export const ROTA_STATUSES: Record<
   },
 };
 
-export type AvailabilityPeriod = "AM" | "PM" | "EV" | "AM+PM" | "PM+EV";
+export type AvailabilityPeriod =
+  | "AM"
+  | "PM"
+  | "EV"
+  | "AM+PM"
+  | "AM+EV"
+  | "PM+EV"
+  | "AM+PM+EV";
 
 export const ROLE_TYPES = [
   "coordinator",

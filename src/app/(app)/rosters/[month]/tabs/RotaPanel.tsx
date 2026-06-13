@@ -13,6 +13,7 @@ import {
   type CalcSettings,
 } from "@/lib/rota-calc";
 import { quarterHourOptions } from "@/lib/time";
+import { nullEmpty, numOrNull } from "@/lib/sanitize";
 import { downloadRotaPdf } from "@/lib/output/pdf";
 import { downloadRotaXlsx } from "@/lib/output/xlsx";
 import { rotaFileName } from "@/lib/output/filename";
@@ -219,12 +220,22 @@ export function RotaPanel({
       await supabase.from("shuttles").delete().eq("ship_id", ship.id);
       if (shifts.length)
         await supabase.from("shifts").insert(
-          shifts.map((s) => ({ ...stripId(s), ship_id: ship.id })),
+          shifts.map((s) => ({
+            ...nullEmpty(stripId(s), ["start_time", "end_time", "location", "assigned_staff_id"]),
+            ship_id: ship.id,
+          })),
         );
       if (shuttles.length)
         await supabase.from("shuttles").insert(
-          shuttles.map((s, i) => ({ ...stripId(s), ship_id: ship.id, sort_order: i })),
+          shuttles.map((s, i) => ({
+            ...nullEmpty(stripId(s), ["first_from_dock", "last_from_city"]),
+            bus_count: numOrNull(s.bus_count),
+            frequency_minutes: numOrNull(s.frequency_minutes),
+            ship_id: ship.id,
+            sort_order: i,
+          })),
         );
+      ctx.bumpSync();
     }
     ctx.toast("Rota saved");
   }

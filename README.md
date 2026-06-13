@@ -48,12 +48,11 @@ npm run test    # 21 passing (rota-calc, parse-schedule, parse-availability)
 ### Known follow-ups
 
 - PDF table extraction on upload is flagged for manual entry (use Excel/CSV).
-- Supabase Realtime for live two-way sync between open tabs is not yet wired
-  (assignments sync through the database on save/refresh).
 
 Resolved in 0.7.0: season-wide ship numbering (server-side), Storage-backed
 shuttle-signage upload/download, persisted email settings, and PDF/Excel output
-matching the supplied CWA sample sheet.
+matching the supplied CWA sample sheet. Resolved in 0.9.0: integration-audit
+write-path fixes and Supabase Realtime live two-way sync.
 
 ## Getting started
 

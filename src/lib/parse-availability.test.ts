@@ -28,6 +28,21 @@ describe("parseAvailabilityMatrix", () => {
     ).toBeUndefined();
   });
 
+  it("emits canonical-order combos within the allowed set (AM+EV, AM+PM+EV)", () => {
+    const allowed = new Set(["AM", "PM", "EV", "AM+PM", "AM+EV", "PM+EV", "AM+PM+EV"]);
+    const matrix = [
+      ["Day", "Date", "In-Port", "Company", "Ship", "Skip", "AllDay"],
+      ["Sunday", "07/06/2026", "07:30-18:30", "P&O", "Arcadia", "AM EV", "AM PM EV"],
+    ];
+    const result = parseAvailabilityMatrix(matrix);
+    const skip = result.cells.find((c) => c.staffName === "Skip");
+    const allDay = result.cells.find((c) => c.staffName === "AllDay");
+    expect(skip?.period).toBe("AM+EV");
+    expect(allDay?.period).toBe("AM+PM+EV");
+    // Every emitted period must satisfy the DB CHECK constraint.
+    for (const c of result.cells) expect(allowed.has(c.period)).toBe(true);
+  });
+
   it("ignores a trailing Notes column", () => {
     const matrix = [
       ["Day", "Date", "In-Port", "Company", "Ship", "John E", "Notes"],

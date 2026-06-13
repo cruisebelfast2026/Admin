@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { logChange } from "@/lib/changelog";
+import { nullEmpty } from "@/lib/sanitize";
 import type { ShipRequest } from "@/lib/types";
 import type { MonthContext } from "../MonthView";
 
@@ -32,14 +33,20 @@ export function ShipRequestsTab({ ctx }: { ctx: MonthContext }) {
     const supabase = createClient();
     const draft = requests[shipId] ?? {};
     if (supabase) {
+      // Strip server-managed columns and coerce empty time strings to null.
+      const { id: _id, updated_at: _u, ...rest } = draft;
+      const payload = nullEmpty({ ...rest, ship_id: shipId }, [
+        "requested_start_time",
+        "requested_end_time",
+      ]);
       await supabase
         .from("ship_requests")
-        .upsert({ ...draft, ship_id: shipId }, { onConflict: "ship_id" });
+        .upsert(payload, { onConflict: "ship_id" });
       await logChange(supabase, {
         action_type: "ship_request_updated",
         entity_type: "ship_request",
         entity_id: shipId,
-        new_value: draft,
+        new_value: payload,
       });
     }
     ctx.toast("Ship request saved");
