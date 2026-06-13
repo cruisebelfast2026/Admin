@@ -45,14 +45,16 @@ npm run test    # 21 passing (rota-calc, parse-schedule, parse-availability)
 > The pure calculation/parsing logic is unit-tested. End-to-end persistence
 > needs a live Supabase project (the app runs in demo mode without one).
 
-### Known follow-ups
+### Notes
 
-- PDF table extraction on upload is flagged for manual entry (use Excel/CSV).
+- PDF schedule/availability uploads are auto-parsed heuristically (PDF.js text
+  reconstruction); review the extracted rows before importing. Scanned/
+  image-only PDFs are flagged for manual entry — use Excel/CSV for those.
 
-Resolved in 0.7.0: season-wide ship numbering (server-side), Storage-backed
-shuttle-signage upload/download, persisted email settings, and PDF/Excel output
-matching the supplied CWA sample sheet. Resolved in 0.9.0: integration-audit
-write-path fixes and Supabase Realtime live two-way sync.
+All build-brief phases and follow-ups are implemented: season-wide ship
+numbering, Storage-backed shuttle signage, persisted email settings, CWA-format
+PDF/Excel output, integration-audit write-path fixes, Supabase Realtime live
+two-way sync, and PDF upload parsing.
 
 ## Getting started
 
