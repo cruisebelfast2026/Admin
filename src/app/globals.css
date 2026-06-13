@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+/*
+ * Rota Manager — Visit Belfast brand theme
+ * Navy #003865 · Teal #00A499 · Light grey #F5F5F5
+ */
+
+:root {
+  --vb-navy: #003865;
+  --vb-navy-dark: #002a4d;
+  --vb-teal: #00a499;
+  --vb-teal-dark: #008c83;
+  --vb-bg: #f5f5f5;
+  --vb-panel: #ffffff;
+  --vb-teal-tint: #e8f4f3;
+  --vb-border: #e2e5e9;
+  --vb-text: #1f2933;
+  --vb-muted: #5b6770;
+  --radius: 6px;
+
+  /* status badge colours */
+  --status-red: #dc2626;
+  --status-yellow: #d97706;
+  --status-orange: #ea580c;
+  --status-blue: #2563eb;
+  --status-green: #16a34a;
+}
+
+@theme inline {
+  --color-vb-navy: var(--vb-navy);
+  --color-vb-navy-dark: var(--vb-navy-dark);
+  --color-vb-teal: var(--vb-teal);
+  --color-vb-teal-dark: var(--vb-teal-dark);
+  --color-vb-bg: var(--vb-bg);
+  --color-vb-panel: var(--vb-panel);
+  --color-vb-teal-tint: var(--vb-teal-tint);
+  --color-vb-border: var(--vb-border);
+  --color-vb-text: var(--vb-text);
+  --color-vb-muted: var(--vb-muted);
+  --radius-vb: var(--radius);
+  --font-heading: var(--font-montserrat), "Montserrat", sans-serif;
+  --font-sans: Arial, Helvetica, sans-serif;
+}
+
+html,
+body {
+  background: var(--vb-bg);
+  color: var(--vb-text);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+h1,
+h2,
+h3,
+h4,
+.font-heading {
+  font-family: var(--font-montserrat), "Montserrat", Arial, sans-serif;
+}
+
+/* Frozen-column table helper */
+.sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--vb-panel);
+}
