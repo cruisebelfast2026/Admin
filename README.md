@@ -84,14 +84,45 @@ Setup works against local state, but nothing is persisted.
 
 ## Deployment (Cloudflare)
 
-Deploy with [OpenNext for Cloudflare](https://opennext.js.org/cloudflare):
+The app deploys to **Cloudflare Workers** via the
+[OpenNext Cloudflare adapter](https://opennext.js.org/cloudflare). Config lives
+in `wrangler.jsonc` and `open-next.config.ts`.
+
+> `NEXT_PUBLIC_*` vars are inlined into the bundle **at build time**, so they
+> must be present when the build runs (not as runtime-only secrets).
+
+### Option A — deploy from your machine
 
 ```bash
-npm run deploy   # builds with @opennextjs/cloudflare and deploys via Wrangler
+# 1. Put the two Supabase vars in .env.local (read at build time)
+#    NEXT_PUBLIC_SUPABASE_URL=...
+#    NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+
+npx wrangler login   # once
+npm run deploy       # builds with OpenNext and deploys the Worker
+npm run preview      # optional: build + run the Worker locally first
 ```
 
-Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` as
-environment variables / secrets in the Cloudflare dashboard or `wrangler.toml`.
+### Option B — deploy from GitHub (recommended)
+
+1. Cloudflare dashboard → **Workers & Pages → Create → Workers → Import a
+   repository** → pick `cruisebelfast2026/admin`.
+2. Build command `npm run deploy`, or let Workers Builds use the repo config.
+3. Under the Worker's **Settings → Variables and Secrets**, add
+   `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (and add them
+   as **build** variables too, since they're inlined at build time).
+4. Every push to `main` then builds and deploys automatically.
+
+### Connect your custom domain
+
+Since the domain is already in this Cloudflare account:
+
+1. Open the deployed Worker → **Settings → Domains & Routes → Add → Custom
+   domain**.
+2. Enter the hostname (e.g. `rota.yourdomain.com`) and save — Cloudflare creates
+   the DNS record and provisions TLS automatically (usually a minute or two).
+3. Add that final URL to Supabase **Authentication → URL Configuration → Site
+   URL / Redirect URLs** so logins resolve correctly.
 
 ## Project structure
 

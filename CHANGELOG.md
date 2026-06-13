@@ -6,6 +6,18 @@ tab of the application.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.8.0] — 2026-06-13 — Cloudflare deployment
+
+### Added
+- Cloudflare Workers deployment via the OpenNext adapter: `wrangler.jsonc`,
+  `open-next.config.ts`, the dev hook in `next.config.ts`, and `deploy` /
+  `preview` / `cf-typegen` npm scripts. The OpenNext build is verified against
+  Next.js 16.
+- README deployment guide (local + GitHub-connected) and custom-domain steps.
+
+### Changed
+- ESLint and git ignore the generated `.open-next/` and `.wrangler/` output.
+
 ## [0.7.0] — 2026-06-13 — Follow-ups
 
 ### Added
