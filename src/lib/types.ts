@@ -28,6 +28,10 @@ export interface Ship {
   rota_status: RotaStatus;
   vbwc_opening_hours: string | null;
   payment_notes: string | null;
+  info_received: boolean;
+  rota_sent: boolean;
+  volunteers_sent: boolean;
+  confirmed: boolean;
   created_at: string;
   updated_at: string;
 }

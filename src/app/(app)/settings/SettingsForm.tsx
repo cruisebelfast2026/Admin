@@ -4,6 +4,8 @@ import { useState } from "react";
 import { LOCATIONS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 import { logChange } from "@/lib/changelog";
+import { EmailSettingsManager } from "@/components/EmailSettingsManager";
+import { ShuttleSignageManager } from "@/components/ShuttleSignageManager";
 import type { Settings } from "@/lib/types";
 
 const DAYS = [
@@ -138,33 +140,12 @@ export function SettingsForm({
 
       {/* 14.6 Shuttle signage */}
       <Card title="Shuttle Signage PDFs">
-        <p className="text-sm text-vb-muted">
-          Upload one PDF per cruise line. On the rota download screen the system
-          matches the ship&apos;s cruise line and offers the relevant signage PDF.
-          <span className="block mt-1 text-xs">
-            Storage-backed upload is wired in Phase 5 (Rota Output).
-          </span>
-        </p>
+        <ShuttleSignageManager />
       </Card>
 
       {/* 14.7 Email stub */}
       <Card title="Email Notifications (stub — inactive)">
-        <p className="text-sm text-vb-muted mb-3">
-          Infrastructure is wired but disabled. Enable in a future release.
-        </p>
-        <Grid>
-          <Txt label="Provider (resend / sendgrid / smtp)" v="resend" on={() => {}} disabled />
-          <Txt label="From address" v="" placeholder="rota@…" on={() => {}} disabled />
-          <Txt label="API key" v="" placeholder="••••••" on={() => {}} disabled />
-        </Grid>
-        <div className="mt-3 space-y-1.5">
-          <label className="flex items-center gap-2 text-sm text-vb-muted">
-            <input type="checkbox" disabled className="w-4 h-4" /> Notify on Rota Sent
-          </label>
-          <label className="flex items-center gap-2 text-sm text-vb-muted">
-            <input type="checkbox" disabled className="w-4 h-4" /> Notify on Shift Confirmed
-          </label>
-        </div>
+        <EmailSettingsManager />
       </Card>
 
       <div className="flex items-center gap-3 sticky bottom-0 bg-vb-bg py-3">

@@ -19,19 +19,41 @@ assignment and rota generation across the June–October cruise season.
 
 ## Build status (against the build brief)
 
-**Phase 1 — Foundation: implemented.**
+**All six phases implemented.** See `CHANGELOG.md` for the per-phase log.
 
-- Auth (Supabase email + password), SSR session handling, route guard.
-- App shell: sidebar, season year selector, June–October navigation, month tabs.
-- Staff Setup (full CRUD, roles, display-name auto-gen, volunteer list).
-- Settings (all Section 14 defaults) + email/signage stubs.
-- Dashboard panels and Change Log (admin activity + code/deployment tabs).
-- Full database schema + RLS (Section 17).
+- **Phase 1 — Foundation:** auth, app shell, Staff Setup, Settings, schema + RLS.
+- **Phase 2 — Schedule upload & rosters:** Excel/CSV auto-parse (tolerant column
+  matching), editable ship rows, season numbering, status badges.
+- **Phase 3 — Individual rota:** shuttle section, ambassador auto-calculation,
+  shift splitting, TA auto-generation, coordinator/volunteer rows, 15-min selects.
+- **Phase 4 — Availability & assignment:** availability upload, Assigned master
+  grid (yellow/green cells, conflict flags, per-column stats), filtered dropdowns.
+- **Phase 5 — Volunteers, ship requests & output:** volunteer grid, ship-request
+  records, PDF (`@react-pdf/renderer`) and Excel (SheetJS) downloads with the CWA
+  filename convention.
+- **Phase 6 — Polish:** Assigned status columns, email stub, responsive passes,
+  Vitest suite (calc engine + parsers).
 
-Phases 2–6 (schedule upload, individual rota generation & auto-calculation,
-availability/assignment grid, volunteer & ship-request tabs, PDF/Excel output,
-change-log polish) are scaffolded with navigable placeholders describing the
-work, and tracked in `CHANGELOG.md`.
+### Verified
+
+```bash
+npm run lint    # clean
+npm run build   # passes
+npm run test    # 21 passing (rota-calc, parse-schedule, parse-availability)
+```
+
+> The pure calculation/parsing logic is unit-tested. End-to-end persistence
+> needs a live Supabase project (the app runs in demo mode without one).
+
+### Known follow-ups
+
+- PDF table extraction on upload is flagged for manual entry (use Excel/CSV).
+- Supabase Realtime for live two-way sync between open tabs is not yet wired
+  (assignments sync through the database on save/refresh).
+
+Resolved in 0.7.0: season-wide ship numbering (server-side), Storage-backed
+shuttle-signage upload/download, persisted email settings, and PDF/Excel output
+matching the supplied CWA sample sheet.
 
 ## Getting started
 
@@ -54,20 +76,53 @@ Setup works against local state, but nothing is persisted.
    # or paste supabase/migrations/0001_initial_schema.sql into the SQL editor
    ```
 3. Seed defaults and example staff: run `supabase/seed.sql`.
-4. Create the 3 named admin accounts under **Authentication → Users**
+4. Migration `0004` creates a private Storage bucket named `signage` for the
+   shuttle-signage PDFs (also creatable via **Storage** in the dashboard).
+5. Create the 3 named admin accounts under **Authentication → Users**
    (set a `full_name` in user metadata for the change-log display name).
-5. Copy the project URL and anon key into `.env.local`.
+6. Copy the project URL and anon key into `.env.local`.
 
 ## Deployment (Cloudflare)
 
-Deploy with [OpenNext for Cloudflare](https://opennext.js.org/cloudflare):
+The app deploys to **Cloudflare Workers** via the
+[OpenNext Cloudflare adapter](https://opennext.js.org/cloudflare). Config lives
+in `wrangler.jsonc` and `open-next.config.ts`.
+
+> `NEXT_PUBLIC_*` vars are inlined into the bundle **at build time**, so they
+> must be present when the build runs (not as runtime-only secrets).
+
+### Option A — deploy from your machine
 
 ```bash
-npm run deploy   # builds with @opennextjs/cloudflare and deploys via Wrangler
+# 1. Put the two Supabase vars in .env.local (read at build time)
+#    NEXT_PUBLIC_SUPABASE_URL=...
+#    NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+
+npx wrangler login   # once
+npm run deploy       # builds with OpenNext and deploys the Worker
+npm run preview      # optional: build + run the Worker locally first
 ```
 
-Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` as
-environment variables / secrets in the Cloudflare dashboard or `wrangler.toml`.
+### Option B — deploy from GitHub (recommended)
+
+1. Cloudflare dashboard → **Workers & Pages → Create → Workers → Import a
+   repository** → pick `cruisebelfast2026/admin`.
+2. Build command `npm run deploy`, or let Workers Builds use the repo config.
+3. Under the Worker's **Settings → Variables and Secrets**, add
+   `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (and add them
+   as **build** variables too, since they're inlined at build time).
+4. Every push to `main` then builds and deploys automatically.
+
+### Connect your custom domain
+
+Since the domain is already in this Cloudflare account:
+
+1. Open the deployed Worker → **Settings → Domains & Routes → Add → Custom
+   domain**.
+2. Enter the hostname (e.g. `rota.yourdomain.com`) and save — Cloudflare creates
+   the DNS record and provisions TLS automatically (usually a minute or two).
+3. Add that final URL to Supabase **Authentication → URL Configuration → Site
+   URL / Redirect URLs** so logins resolve correctly.
 
 ## Project structure
 
