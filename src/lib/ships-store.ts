@@ -8,10 +8,33 @@ import { logChange } from "./changelog";
 import type { ParsedShipRow } from "./parse-schedule";
 import type { Ship } from "./types";
 
-/** Order ships by date and assign sequential season numbers. */
+/** Order ships by date and assign sequential season numbers (client fallback). */
 export function assignSeasonNumbers(ships: Ship[]): Ship[] {
   const sorted = [...ships].sort((a, b) => a.date.localeCompare(b.date));
   return sorted.map((s, i) => ({ ...s, season_number: i + 1 }));
+}
+
+/** Re-sequence season numbers across the whole year in the database. */
+export async function resequenceSeason(
+  supabase: SupabaseClient,
+  year: number,
+): Promise<void> {
+  await supabase.rpc("resequence_season_numbers", { p_year: year });
+}
+
+/** Fetch a single month's ships (date-ordered). */
+export async function fetchMonthShips(
+  supabase: SupabaseClient,
+  year: number,
+  month: number,
+): Promise<Ship[]> {
+  const { data } = await supabase
+    .from("ships")
+    .select("*")
+    .eq("year", year)
+    .eq("month", month)
+    .order("date", { ascending: true });
+  return (data as Ship[]) ?? [];
 }
 
 function demoShip(partial: Partial<Ship>, year: number, month: number): Ship {
@@ -69,13 +92,15 @@ export async function importSchedule(
   // Replace existing month data (Section 5.2 — re-upload replaces).
   await supabase.from("ships").delete().eq("year", year).eq("month", month);
   const rows = sequenced.map(({ id: _id, created_at: _c, updated_at: _u, ...rest }) => rest);
-  const { data } = await supabase.from("ships").insert(rows).select();
+  await supabase.from("ships").insert(rows);
   await logChange(supabase, {
     action_type: "schedule_imported",
     entity_type: "ship",
     new_value: { year, month, count: rows.length },
   });
-  return (data as Ship[]) ?? sequenced;
+  // Number sequentially across the whole season, then return the fresh month.
+  await resequenceSeason(supabase, year);
+  return fetchMonthShips(supabase, year, month);
 }
 
 export async function addShip(

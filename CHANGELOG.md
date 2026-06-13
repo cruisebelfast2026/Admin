@@ -6,6 +6,29 @@ tab of the application.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.7.0] — 2026-06-13 — Follow-ups
+
+### Added
+- **Season-wide ship numbering**: `resequence_season_numbers(year)` SQL function
+  (migration `0003`) numbers ships sequentially across the whole season by date;
+  called after import/add/delete/date-change with a month refetch.
+- **Shuttle signage PDFs**: Supabase Storage bucket + policy (migration `0004`),
+  per-cruise-line upload in Settings, and a Signage download button on the rota
+  that matches the ship's cruise line.
+- **Email settings** persistence: the notification stub now loads/saves provider,
+  from address, API key and triggers to `email_settings` (still inactive).
+- SessionStart hook (`.claude/hooks/session-start.sh`) to install dependencies
+  in Claude Code on the web sessions.
+
+### Changed
+- **Rota output (PDF & Excel) reworked to match the supplied CWA sample sheet**:
+  DATE / SHIP / DOCK / TIME IN PORT block, NAME / TIME / POSITION columns,
+  dot-format times (`07.30-12.30`), time-in-port as `0800 - 1730`, volunteers
+  showing start time only, the BUSES / TIMES / FREQUENCY shuttle block
+  (`x3 DD Buses`, `1st Bus …` / `Last Bus …`, `Every 20minutes`), and the
+  PAYMENT / CAPACITY / VBWC footer. The Excel worksheet tab is now named after
+  the file (e.g. `16_CWA_Rota_AMBITION_14th_June_2026`).
+
 ## [0.6.0] — 2026-06-13 — Phase 6: Change Log, polish & email stub
 
 ### Added

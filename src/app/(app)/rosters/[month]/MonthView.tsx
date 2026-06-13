@@ -4,7 +4,13 @@ import { useCallback, useState } from "react";
 import { TABS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 import type { Settings, Ship, Staff } from "@/lib/types";
-import { assignSeasonNumbers, deleteShip, updateShip } from "@/lib/ships-store";
+import {
+  assignSeasonNumbers,
+  deleteShip,
+  fetchMonthShips,
+  resequenceSeason,
+  updateShip,
+} from "@/lib/ships-store";
 import { useToast } from "@/components/ui";
 import { RostersTab } from "./tabs/RostersTab";
 import { ScheduleUploadTab } from "./tabs/ScheduleUploadTab";
@@ -23,6 +29,7 @@ export interface MonthContext {
   setShips: (updater: (prev: Ship[]) => Ship[]) => void;
   patchShip: (ship: Ship, patch: Partial<Ship>) => Promise<void>;
   removeShip: (ship: Ship) => Promise<void>;
+  refreshShips: () => Promise<void>;
   toast: (msg: string) => void;
 }
 
@@ -54,13 +61,28 @@ export function MonthView({
     [],
   );
 
-  const removeShip = useCallback(async (ship: Ship) => {
+  const refreshShips = useCallback(async () => {
     const supabase = createClient();
-    await deleteShip(supabase, ship);
-    setShips((prev) =>
-      assignSeasonNumbers(prev.filter((s) => s.id !== ship.id)),
-    );
-  }, []);
+    if (!supabase) return;
+    await resequenceSeason(supabase, year);
+    const fresh = await fetchMonthShips(supabase, year, monthValue);
+    setShips(() => fresh);
+  }, [year, monthValue]);
+
+  const removeShip = useCallback(
+    async (ship: Ship) => {
+      const supabase = createClient();
+      await deleteShip(supabase, ship);
+      if (supabase) {
+        await refreshShips();
+      } else {
+        setShips((prev) =>
+          assignSeasonNumbers(prev.filter((s) => s.id !== ship.id)),
+        );
+      }
+    },
+    [refreshShips],
+  );
 
   const ctx: MonthContext = {
     ships,
@@ -72,6 +94,7 @@ export function MonthView({
     setShips,
     patchShip,
     removeShip,
+    refreshShips,
     toast: show,
   };
 

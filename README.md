@@ -47,12 +47,13 @@ npm run test    # 21 passing (rota-calc, parse-schedule, parse-availability)
 
 ### Known follow-ups
 
-- Season ship numbering is applied per month in the client; a full season-wide
-  re-sequence belongs server-side.
 - PDF table extraction on upload is flagged for manual entry (use Excel/CSV).
-- Shuttle-signage PDF upload/download (Storage-backed) is stubbed in Settings.
 - Supabase Realtime for live two-way sync between open tabs is not yet wired
   (assignments sync through the database on save/refresh).
+
+Resolved in 0.7.0: season-wide ship numbering (server-side), Storage-backed
+shuttle-signage upload/download, persisted email settings, and PDF/Excel output
+matching the supplied CWA sample sheet.
 
 ## Getting started
 
@@ -75,9 +76,11 @@ Setup works against local state, but nothing is persisted.
    # or paste supabase/migrations/0001_initial_schema.sql into the SQL editor
    ```
 3. Seed defaults and example staff: run `supabase/seed.sql`.
-4. Create the 3 named admin accounts under **Authentication → Users**
+4. Migration `0004` creates a private Storage bucket named `signage` for the
+   shuttle-signage PDFs (also creatable via **Storage** in the dashboard).
+5. Create the 3 named admin accounts under **Authentication → Users**
    (set a `full_name` in user metadata for the change-log display name).
-5. Copy the project URL and anon key into `.env.local`.
+6. Copy the project URL and anon key into `.env.local`.
 
 ## Deployment (Cloudflare)
 

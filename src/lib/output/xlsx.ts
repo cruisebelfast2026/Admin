@@ -1,70 +1,103 @@
 /**
- * Excel (.xlsx) generation for an individual rota (Section 13.3) — mirrors the
- * PDF section layout. Uses SheetJS.
+ * Excel (.xlsx) generation for an individual rota (Section 13.3), laid out to
+ * match the established CWA rota sheet. The worksheet tab is named after the
+ * file (e.g. 16_CWA_Rota_AMBITION_14th_June_2026).
  */
 import * as XLSX from "xlsx";
 import {
-  hhmm,
-  longDate,
+  busLabel,
+  dateLine,
+  dot,
+  dotRange,
+  portRange,
   SECTION_ORDER,
   SECTION_TITLES,
   type RotaOutputData,
 } from "./types";
 
-export function downloadRotaXlsx(data: RotaOutputData, fileName: string) {
+type Row = (string | number)[];
+
+export function buildRotaAoa(data: RotaOutputData): Row[] {
   const { ship, shifts, shuttles } = data;
-  const aoa: (string | number)[][] = [];
-
-  aoa.push(["CRUISE WELCOME AMBASSADOR ROTA"]);
-  aoa.push([longDate(ship.date)]);
-  aoa.push([]);
-  aoa.push(["Ship", ship.ship_name, "Dock", ship.dock ?? "—"]);
-  aoa.push([
-    "Time in Port",
-    `${hhmm(ship.arrival_time)} – ${hhmm(ship.departure_time)}`,
-    "Capacity",
-    ship.capacity ?? "—",
-  ]);
-  aoa.push(["Cruise Line", ship.cruise_line ?? "—", "Season Ship #", ship.season_number ?? "—"]);
-  aoa.push([]);
-
-  for (const role of SECTION_ORDER) {
-    const rows = shifts
+  const rows: Row[] = [];
+  const blank = () => rows.push([]);
+  const get = (role: (typeof SECTION_ORDER)[number]) =>
+    shifts
       .filter((s) => s.role_type === role)
       .sort((a, b) => a.shift_number - b.shift_number);
-    if (rows.length === 0) continue;
-    aoa.push([SECTION_TITLES[role]]);
-    aoa.push(["Name", "Time", "Location"]);
-    for (const s of rows) {
-      const time =
-        role === "volunteer"
-          ? hhmm(s.start_time)
-          : `${hhmm(s.start_time)} – ${hhmm(s.end_time)}`;
-      aoa.push([data.staffName(s.assigned_staff_id), time, s.location ?? ""]);
+
+  blank();
+  rows.push(["DATE", "", dateLine(ship.date)]);
+  blank();
+  rows.push(["SHIP", "", ship.ship_name]);
+  blank();
+  rows.push(["DOCK", "", ship.dock ?? ""]);
+  blank();
+  rows.push(["TIME IN PORT", "", portRange(ship.arrival_time, ship.departure_time)]);
+  blank();
+  rows.push(["", "", "NAME", "TIME", "POSITION"]);
+  blank();
+
+  // People sections: section label sits on the first member's row.
+  const personSections: (typeof SECTION_ORDER)[number][] = [
+    "coordinator",
+    "travel_advisor",
+    "ambassador",
+    "volunteer",
+  ];
+  for (const role of personSections) {
+    const members = get(role);
+    if (members.length === 0) {
+      rows.push([SECTION_TITLES[role]]);
+    } else {
+      members.forEach((s, i) => {
+        const label = i === 0 ? SECTION_TITLES[role] : "";
+        const time =
+          role === "volunteer" ? dot(s.start_time) : dotRange(s.start_time, s.end_time);
+        rows.push([label, "", data.staffName(s.assigned_staff_id), time, s.location ?? ""]);
+      });
     }
-    aoa.push([]);
+    blank();
+    blank();
   }
 
-  if (shuttles.length > 0) {
-    aoa.push(["BUSES / SHUTTLES"]);
-    aoa.push(["Buses", "First / Last", "Frequency"]);
-    for (const b of shuttles) {
-      aoa.push([
-        `${b.bus_count} × ${b.bus_type === "double_decker" ? "Double Decker" : "Single"}`,
-        `First ${hhmm(b.first_from_dock)} · Last ${hhmm(b.last_from_city)}`,
-        `Every ${b.frequency_minutes ?? "—"} min`,
-      ]);
-    }
-    aoa.push([]);
+  // Shuttles block.
+  rows.push(["", "", "BUSES", "TIMES", "FREQUENCY"]);
+  if (shuttles.length === 0) {
+    rows.push(["SHUTTLES"]);
+  } else {
+    shuttles.forEach((b, i) => {
+      const label = i === 0 ? "SHUTTLES" : "";
+      const freq = b.frequency_minutes ? `Every ${b.frequency_minutes}minutes` : "";
+      rows.push([label, "", busLabel(b), `1st Bus ${dot(b.first_from_dock)}`, freq]);
+      rows.push(["", "", "", `Last Bus ${dot(b.last_from_city)}`, ""]);
+    });
   }
+  blank();
 
-  aoa.push(["Payment", data.payment || "TBC"]);
-  aoa.push(["Capacity", ship.capacity ?? "—"]);
-  aoa.push(["VBWC Opening Hours", data.vbwcHours || "—"]);
+  rows.push(["PAYMENT", "", data.payment || "TBC"]);
+  blank();
+  rows.push(["CAPACITY", "", ship.capacity ?? ""]);
+  blank();
+  rows.push(["VBWC", "", dotRange(splitHours(data.vbwcHours)[0], splitHours(data.vbwcHours)[1]) || data.vbwcHours || ""]);
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws["!cols"] = [{ wch: 28 }, { wch: 26 }, { wch: 18 }, { wch: 14 }];
+  return rows;
+}
+
+/** Accept "09:00-17:00" or "09.00–17.00" and return [start, end] in HH:MM. */
+function splitHours(v: string): [string | null, string | null] {
+  const m = /(\d{1,2})[:.](\d{2})\s*[-–]\s*(\d{1,2})[:.](\d{2})/.exec(v ?? "");
+  if (!m) return [null, null];
+  return [`${m[1].padStart(2, "0")}:${m[2]}`, `${m[3].padStart(2, "0")}:${m[4]}`];
+}
+
+export function downloadRotaXlsx(data: RotaOutputData, fileName: string) {
+  const ws = XLSX.utils.aoa_to_sheet(buildRotaAoa(data));
+  ws["!cols"] = [
+    { wch: 18 }, { wch: 2 }, { wch: 20 }, { wch: 18 }, { wch: 16 }, { wch: 2 }, { wch: 2 },
+  ];
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Rota");
+  // Worksheet tab name == file name (Excel caps tab names at 31 chars).
+  XLSX.utils.book_append_sheet(wb, ws, fileName.slice(0, 31));
   XLSX.writeFile(wb, `${fileName}.xlsx`);
 }

@@ -16,6 +16,7 @@ import { quarterHourOptions } from "@/lib/time";
 import { downloadRotaPdf } from "@/lib/output/pdf";
 import { downloadRotaXlsx } from "@/lib/output/xlsx";
 import { rotaFileName } from "@/lib/output/filename";
+import { signageForCruiseLine, signageUrl } from "@/lib/signage";
 import type { Ship, Shuttle, Staff } from "@/lib/types";
 import type { MonthContext } from "../MonthView";
 
@@ -243,6 +244,21 @@ export function RotaPanel({
     else downloadRotaXlsx(payload, fileName);
   }
 
+  async function downloadSignage() {
+    const supabase = createClient();
+    if (!supabase) {
+      ctx.toast("Signage needs Supabase configured");
+      return;
+    }
+    const row = await signageForCruiseLine(supabase, ship.cruise_line);
+    if (!row) {
+      ctx.toast(`No signage uploaded for ${ship.cruise_line ?? "this cruise line"}`);
+      return;
+    }
+    const url = await signageUrl(supabase, row.storage_path);
+    if (url) window.open(url, "_blank");
+  }
+
   const sectionShifts = (role: LocalShift["role_type"]) =>
     shifts.filter((s) => s.role_type === role).sort((a, b) => a.shift_number - b.shift_number);
 
@@ -255,6 +271,7 @@ export function RotaPanel({
         <div className="flex gap-2">
           <button onClick={() => download("pdf")} className="bg-white/15 hover:bg-white/25 text-white text-xs font-semibold rounded-vb px-3 py-1.5">PDF</button>
           <button onClick={() => download("xlsx")} className="bg-white/15 hover:bg-white/25 text-white text-xs font-semibold rounded-vb px-3 py-1.5">XLS</button>
+          <button onClick={downloadSignage} className="bg-white/15 hover:bg-white/25 text-white text-xs font-semibold rounded-vb px-3 py-1.5">Signage</button>
           <button onClick={save} className="bg-vb-teal hover:bg-vb-teal-dark text-white text-xs font-semibold rounded-vb px-3 py-1.5">Save</button>
         </div>
       }

@@ -28,7 +28,9 @@ export function RostersTab({ ctx }: { ctx: MonthContext }) {
     setDraft({ ...s });
   }
   async function saveEdit(s: Ship) {
+    const dateChanged = draft.date && draft.date !== s.date;
     await ctx.patchShip(s, draft);
+    if (dateChanged && ctx.configured) await ctx.refreshShips();
     setEditingId(null);
     setDraft({});
     ctx.toast("Ship saved");
@@ -38,6 +40,7 @@ export function RostersTab({ ctx }: { ctx: MonthContext }) {
     const supabase = createClient();
     const ship = await addShip(supabase, ctx.ships, ctx.year, ctx.monthValue);
     ctx.setShips((prev) => assignSeasonNumbers([...prev, ship]));
+    if (ctx.configured) await ctx.refreshShips();
     startEdit(ship);
   }
 
