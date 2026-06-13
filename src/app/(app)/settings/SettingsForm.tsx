@@ -42,16 +42,21 @@ export function SettingsForm({
     }
     setBusy(true);
     const { id, ...rest } = s;
+    // Drop empty values so cleared time inputs never hit NOT NULL columns
+    // (omitting a key keeps the column's existing/default value).
+    const payload = Object.fromEntries(
+      Object.entries(rest).filter(([, v]) => v !== "" && v !== undefined),
+    );
     const query = id
-      ? supabase.from("settings").update(rest).eq("id", id)
-      : supabase.from("settings").insert(rest);
+      ? supabase.from("settings").update(payload).eq("id", id)
+      : supabase.from("settings").insert(payload);
     const { error } = await query;
     if (!error) {
       await logChange(supabase, {
         action_type: "settings_updated",
         entity_type: "settings",
         entity_id: id ?? null,
-        new_value: rest,
+        new_value: payload,
       });
       setToast("Settings saved");
     } else {

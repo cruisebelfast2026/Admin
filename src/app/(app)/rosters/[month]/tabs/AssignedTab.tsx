@@ -37,7 +37,7 @@ export function AssignedTab({ ctx }: { ctx: MonthContext }) {
       }
       if (sh.data) setShifts(sh.data as Shift[]);
     })();
-  }, [ctx.ships]);
+  }, [ctx.ships, ctx.syncVersion]);
 
   // Staff columns: everyone except volunteer-only (Section 10.3).
   const staffCols = ctx.staff.filter((s) => !onlyVolunteer(s));
@@ -105,12 +105,14 @@ export function AssignedTab({ ctx }: { ctx: MonthContext }) {
           : s,
       ),
     );
-    if (supabase)
+    if (supabase) {
       await supabase
         .from("shifts")
         .update({ confirmed: next })
         .eq("ship_id", ship.id)
         .eq("assigned_staff_id", staffId);
+      ctx.bumpSync();
+    }
   }
 
   if (ctx.ships.length === 0) {

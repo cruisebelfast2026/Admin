@@ -30,7 +30,7 @@ export function VolunteerShiftsTab({ ctx }: { ctx: MonthContext }) {
       }
       setSlots(map);
     })();
-  }, [ctx.ships]);
+  }, [ctx.ships, ctx.syncVersion]);
 
   async function setSlot(shipId: string, idx: number, staffId: string | null) {
     setSlots((p) => {
@@ -69,6 +69,7 @@ export function VolunteerShiftsTab({ ctx }: { ctx: MonthContext }) {
         assigned_staff_id: staffId,
       });
     }
+    ctx.bumpSync();
     ctx.toast("Volunteer updated");
   }
 

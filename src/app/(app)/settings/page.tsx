@@ -13,7 +13,11 @@ export default async function SettingsPage() {
 
   if (supabase) {
     configured = true;
-    const { data } = await supabase.from("settings").select("*").limit(1).single();
+    const { data } = await supabase
+      .from("settings")
+      .select("*")
+      .limit(1)
+      .maybeSingle();
     if (data) settings = data as Settings;
   }
 
