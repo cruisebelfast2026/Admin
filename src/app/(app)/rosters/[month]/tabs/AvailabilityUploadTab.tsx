@@ -19,15 +19,16 @@ export function AvailabilityUploadTab({ ctx }: { ctx: MonthContext }) {
     if (!file) return;
     setError(null);
     setParsed(null);
-    if (file.name.toLowerCase().endsWith(".pdf")) {
-      setError("PDF availability sheets must be entered manually — upload Excel/CSV for auto-parsing.");
-      return;
-    }
     try {
       const matrix = await readSheetMatrix(file);
       const result = parseAvailabilityMatrix(matrix);
       if (result.cells.length === 0) {
-        setError("No availability markers (AM/PM/EV) were found in this sheet.");
+        const isPdf = file.name.toLowerCase().endsWith(".pdf");
+        setError(
+          isPdf
+            ? "Couldn't extract availability from this PDF (it may be scanned). Upload Excel/CSV instead."
+            : "No availability markers (AM/PM/EV) were found in this sheet.",
+        );
         return;
       }
       setParsed(result);

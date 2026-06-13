@@ -6,6 +6,16 @@ tab of the application.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.10.0] — 2026-06-13 — PDF upload parsing
+
+### Added
+- **PDF schedule & availability upload now auto-parses.** Uses PDF.js to read
+  positioned text and reconstructs table rows (grouped by y) and columns (split
+  by x gaps), then feeds the existing schedule/availability parsers. Scanned /
+  image-only PDFs (no extractable text) are still flagged for manual entry, and
+  extracted schedule rows show the usual ⚠ review flags before import.
+- Unit tests for the row/column reconstruction and header mapping.
+
 ## [0.9.0] — 2026-06-13 — Integration audit fixes & live sync
 
 ### Fixed

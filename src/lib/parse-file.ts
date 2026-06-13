@@ -6,6 +6,7 @@
 
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
+import { matrixToObjects, parsePdfToMatrix } from "./parse-pdf";
 
 export interface ReadResult {
   rows: Record<string, unknown>[];
@@ -36,8 +37,10 @@ export async function readTabularFile(file: File): Promise<ReadResult> {
   }
 
   if (name.endsWith(".pdf") || file.type === "application/pdf") {
-    // PDF table extraction is unreliable client-side; flag for manual entry.
-    return { rows: [], format: "pdf", needsManual: true };
+    // Best-effort table extraction; empty result (e.g. scanned PDF) → manual.
+    const matrix = await parsePdfToMatrix(file);
+    const rows = matrixToObjects(matrix);
+    return { rows, format: "pdf", needsManual: rows.length === 0 };
   }
 
   throw new Error("Unsupported file type. Upload .csv, .xlsx or .pdf.");
@@ -50,6 +53,9 @@ export async function readSheetMatrix(file: File): Promise<unknown[][]> {
     const text = await file.text();
     const parsed = Papa.parse<unknown[]>(text, { skipEmptyLines: true });
     return parsed.data;
+  }
+  if (name.endsWith(".pdf") || file.type === "application/pdf") {
+    return parsePdfToMatrix(file);
   }
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array" });

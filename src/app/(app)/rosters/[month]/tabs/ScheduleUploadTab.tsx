@@ -26,7 +26,7 @@ export function ScheduleUploadTab({ ctx }: { ctx: MonthContext }) {
     setFileName(file.name);
     try {
       const res = await readTabularFile(file);
-      if (res.format === "pdf" || res.needsManual) {
+      if (res.needsManual) {
         setPdfNotice(true);
         return;
       }
@@ -34,6 +34,10 @@ export function ScheduleUploadTab({ ctx }: { ctx: MonthContext }) {
       if (rows.length === 0) {
         setError("No rows could be read from this file.");
         return;
+      }
+      // PDF extraction is heuristic — surface a gentle review hint.
+      if (res.format === "pdf") {
+        setPdfNotice(true);
       }
       setParsed(rows);
     } catch (err) {
@@ -81,10 +85,10 @@ export function ScheduleUploadTab({ ctx }: { ctx: MonthContext }) {
         )}
         {pdfNotice && (
           <p className="text-sm text-amber-800 bg-amber-50 rounded-vb px-3 py-2 mt-3">
-            PDF received. Automatic table extraction from PDF isn&apos;t reliable
-            in the browser — add ships manually in the Rosters tab, or upload the
-            same schedule as Excel/CSV. (Unrecognised fields are always flagged
-            for manual correction.)
+            PDF detected — table data is extracted heuristically. Review the rows
+            and any ⚠ flags carefully before importing. If little/nothing was
+            extracted (e.g. a scanned PDF), upload the schedule as Excel/CSV or
+            add ships manually in the Rosters tab.
           </p>
         )}
       </div>
