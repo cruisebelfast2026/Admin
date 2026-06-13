@@ -19,19 +19,40 @@ assignment and rota generation across the June–October cruise season.
 
 ## Build status (against the build brief)
 
-**Phase 1 — Foundation: implemented.**
+**All six phases implemented.** See `CHANGELOG.md` for the per-phase log.
 
-- Auth (Supabase email + password), SSR session handling, route guard.
-- App shell: sidebar, season year selector, June–October navigation, month tabs.
-- Staff Setup (full CRUD, roles, display-name auto-gen, volunteer list).
-- Settings (all Section 14 defaults) + email/signage stubs.
-- Dashboard panels and Change Log (admin activity + code/deployment tabs).
-- Full database schema + RLS (Section 17).
+- **Phase 1 — Foundation:** auth, app shell, Staff Setup, Settings, schema + RLS.
+- **Phase 2 — Schedule upload & rosters:** Excel/CSV auto-parse (tolerant column
+  matching), editable ship rows, season numbering, status badges.
+- **Phase 3 — Individual rota:** shuttle section, ambassador auto-calculation,
+  shift splitting, TA auto-generation, coordinator/volunteer rows, 15-min selects.
+- **Phase 4 — Availability & assignment:** availability upload, Assigned master
+  grid (yellow/green cells, conflict flags, per-column stats), filtered dropdowns.
+- **Phase 5 — Volunteers, ship requests & output:** volunteer grid, ship-request
+  records, PDF (`@react-pdf/renderer`) and Excel (SheetJS) downloads with the CWA
+  filename convention.
+- **Phase 6 — Polish:** Assigned status columns, email stub, responsive passes,
+  Vitest suite (calc engine + parsers).
 
-Phases 2–6 (schedule upload, individual rota generation & auto-calculation,
-availability/assignment grid, volunteer & ship-request tabs, PDF/Excel output,
-change-log polish) are scaffolded with navigable placeholders describing the
-work, and tracked in `CHANGELOG.md`.
+### Verified
+
+```bash
+npm run lint    # clean
+npm run build   # passes
+npm run test    # 21 passing (rota-calc, parse-schedule, parse-availability)
+```
+
+> The pure calculation/parsing logic is unit-tested. End-to-end persistence
+> needs a live Supabase project (the app runs in demo mode without one).
+
+### Known follow-ups
+
+- Season ship numbering is applied per month in the client; a full season-wide
+  re-sequence belongs server-side.
+- PDF table extraction on upload is flagged for manual entry (use Excel/CSV).
+- Shuttle-signage PDF upload/download (Storage-backed) is stubbed in Settings.
+- Supabase Realtime for live two-way sync between open tabs is not yet wired
+  (assignments sync through the database on save/refresh).
 
 ## Getting started
 

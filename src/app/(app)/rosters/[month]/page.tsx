@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
-import { SEASON_MONTHS } from "@/lib/constants";
+import { DEFAULT_SETTINGS, SEASON_MONTHS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/server";
-import type { Ship } from "@/lib/types";
+import type { Settings, Ship, Staff } from "@/lib/types";
 import { MonthView } from "./MonthView";
 
 export const dynamic = "force-dynamic";
@@ -21,14 +21,24 @@ export default async function MonthPage({
   const supabase = await createClient();
   const year = new Date().getFullYear();
   let ships: Ship[] = [];
+  let staff: Staff[] = [];
+  let settings: Partial<Settings> = { ...DEFAULT_SETTINGS };
+  const configured = Boolean(supabase);
+
   if (supabase) {
-    const { data } = await supabase
-      .from("ships")
-      .select("*")
-      .eq("month", monthDef.value)
-      .eq("year", year)
-      .order("date", { ascending: true });
-    ships = (data as Ship[]) ?? [];
+    const [shipsRes, staffRes, settingsRes] = await Promise.all([
+      supabase
+        .from("ships")
+        .select("*")
+        .eq("month", monthDef.value)
+        .eq("year", year)
+        .order("date", { ascending: true }),
+      supabase.from("staff").select("*").eq("is_active", true).order("first_name"),
+      supabase.from("settings").select("*").limit(1).single(),
+    ]);
+    ships = (shipsRes.data as Ship[]) ?? [];
+    staff = (staffRes.data as Staff[]) ?? [];
+    if (settingsRes.data) settings = settingsRes.data as Settings;
   }
 
   return (
@@ -37,7 +47,14 @@ export default async function MonthPage({
         title={`${monthDef.name} ${year}`}
         subtitle="Monthly roster — ships, assignments, availability and outputs."
       />
-      <MonthView ships={ships} />
+      <MonthView
+        monthValue={monthDef.value}
+        year={year}
+        initialShips={ships}
+        staff={staff}
+        settings={settings}
+        configured={configured}
+      />
     </div>
   );
 }
