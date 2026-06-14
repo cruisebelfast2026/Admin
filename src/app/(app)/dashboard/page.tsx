@@ -2,6 +2,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SEASON_MONTHS } from "@/lib/constants";
+import { getSeasonYear } from "@/lib/season";
 import { createClient } from "@/lib/supabase/server";
 import type { Ship } from "@/lib/types";
 
@@ -19,7 +20,7 @@ function dayName(iso: string) {
 
 export default async function DashboardPage() {
   const supabase = await createClient();
-  const year = new Date().getFullYear();
+  const year = await getSeasonYear();
 
   let ships: Ship[] = [];
   if (supabase) {

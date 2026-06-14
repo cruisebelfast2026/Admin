@@ -6,6 +6,26 @@ tab of the application.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.12.0] — 2026-06-14 — Full-audit fixes & deployment
+
+### Added
+- **GitHub Actions deploy workflow** (`.github/workflows/deploy.yml`) — builds
+  with OpenNext and deploys to Cloudflare on push to `main` (fixes the "hello
+  world" placeholder: the real app now deploys to the `rota-manager` Worker).
+- **Role override** in rota assignment dropdowns (§6.2/§16.2) — assign a TA to
+  an Ambassador slot via a per-row "override" toggle.
+- **VBWC opening hours default** from Settings per weekday on new rotas (§9.1).
+- **Assigned-tab row expansion** to per-shift assignment dropdowns (§10.4).
+- **Rosters-row Download PDF / XLS** buttons (§8.1).
+- **Season year selector now works** — the choice is stored in a cookie and
+  scopes Dashboard/roster queries by year (previously inert).
+
+### Fixed
+- `updateShip` and Ship Requests sanitise empty time strings / `NaN` integers
+  before writing (ship edits and `ambassador_count` could fail the update).
+- Corrected the misleading `NEXT_PUBLIC_*` note in `wrangler.jsonc` (build-time,
+  not runtime secrets).
+
 ## [0.11.0] — 2026-06-14 — Remaining brief rules
 
 ### Added

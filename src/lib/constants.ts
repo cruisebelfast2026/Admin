@@ -11,6 +11,9 @@ export const SEASON_MONTHS = [
   { value: 10, name: "October", short: "Oct" },
 ] as const;
 
+/** Cookie that stores the selected season year (read by server pages). */
+export const SEASON_YEAR_COOKIE = "rota_year";
+
 export const DOCKS = ["D1", "Gotto", "Bangor", "Albert"] as const;
 export const LOCATIONS = ["D1", "Gotto", "Bangor", "Albert", "VBWC"] as const;
 
