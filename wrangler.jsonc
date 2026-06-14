@@ -10,7 +10,12 @@
   },
   "observability": {
     "enabled": true
-  }
+  },
+  // Custom domain — Wrangler creates the DNS record + TLS on deploy. The zone
+  // (cruisebf.com) must be in the same Cloudflare account.
+  "routes": [
+    { "pattern": "cruisebf.com", "custom_domain": true }
+  ]
   // NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY are inlined into
   // the bundle at BUILD time — they must be present when `npm run deploy` runs
   // (e.g. GitHub Actions secrets, or Cloudflare "Workers Builds" *build*
