@@ -21,6 +21,32 @@ describe("parseTime", () => {
   it("handles am/pm", () => {
     expect(parseTime("5:30 pm")).toBe("17:30");
   });
+  it("handles colon-less times", () => {
+    expect(parseTime("0800")).toBe("08:00");
+    expect(parseTime("1730")).toBe("17:30");
+    expect(parseTime("620")).toBe("06:20");
+  });
+});
+
+describe("combined In Port Times column", () => {
+  it("splits an in-port range into arrival/departure", () => {
+    const parsed = parseScheduleRows([
+      { Date: "07/06/2026", "In Port Times": "06:20-18:30", Ship: "Arcadia", Dock: "D1" },
+    ]);
+    expect(parsed[0]).toMatchObject({
+      arrival_time: "06:20",
+      departure_time: "18:30",
+    });
+  });
+  it("handles colon-less in-port ranges with spaces", () => {
+    const parsed = parseScheduleRows([
+      { Date: "07/06/2026", "Time in Port": "0800 - 1730", Ship: "Arcadia" },
+    ]);
+    expect(parsed[0]).toMatchObject({
+      arrival_time: "08:00",
+      departure_time: "17:30",
+    });
+  });
 });
 
 describe("parseScheduleRows", () => {
