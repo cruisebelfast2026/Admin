@@ -5,9 +5,7 @@ import { SidePanel } from "@/components/ui";
 import { DEFAULT_SETTINGS, LOCATIONS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 import {
-  ambassadorWindow,
   availabilityCoversShift,
-  defaultShiftLocation,
   periodsForStart,
   splitShift,
   travelAdvisorShifts,
@@ -42,7 +40,7 @@ interface LocalShuttle {
   frequency_minutes: number | null;
 }
 
-const TIMES = quarterHourOptions();
+const TIMES = quarterHourOptions("06:00", "21:00");
 
 export function RotaPanel({
   ship,
@@ -61,8 +59,13 @@ export function RotaPanel({
     () => ship.vbwc_opening_hours ?? defaultVbwcHours(ship.date, ctx.settings),
   );
   const [payment, setPayment] = useState(ship.payment_notes ?? "");
-  const [ambDock, setAmbDock] = useState(1);
-  const [ambVbwc, setAmbVbwc] = useState(1);
+  // Ambassador requirements: what's requested (count + time window + location);
+  // Auto-calculate splits each into ≤5h shifts.
+  const [ambReqs, setAmbReqs] = useState<
+    { id: string; count: number; start: string; end: string; location: string }[]
+  >(() => [
+    { id: crypto.randomUUID(), count: 1, start: "", end: "", location: ship.dock ?? "VBWC" },
+  ]);
   const [shuttleWarning, setShuttleWarning] = useState(false);
   const [availability, setAvailability] = useState<Record<string, string>>({});
   const [expanded, setExpanded] = useState(false);
@@ -143,7 +146,6 @@ export function RotaPanel({
   const volunteers = ctx.staff.filter((s) => s.is_volunteer);
 
   const firstShuttle = shuttles[0]?.first_from_dock ?? null;
-  const lastShuttle = shuttles[0]?.last_from_city ?? null;
 
   function addShuttle() {
     setShuttles((p) => [
@@ -164,28 +166,47 @@ export function RotaPanel({
     if (shifts.some((s) => s.role_type === "ambassador")) setShuttleWarning(true);
   }
 
-  // 9.4 — generate ambassador shifts from the shuttle window + counts.
+  function addAmbReq() {
+    setAmbReqs((p) => [
+      ...p,
+      { id: crypto.randomUUID(), count: 1, start: "", end: "", location: ship.dock ?? "VBWC" },
+    ]);
+  }
+  function updateAmbReq(id: string, patch: Partial<(typeof ambReqs)[number]>) {
+    setAmbReqs((p) => p.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  }
+  function removeAmbReq(id: string) {
+    setAmbReqs((p) => (p.length > 1 ? p.filter((r) => r.id !== id) : p));
+  }
+
+  // 9.4 — turn each requested requirement into assignable shifts, splitting
+  // anything longer than the threshold into ≤5h shifts (rounded to 15 min).
   function generateAmbassadors() {
-    if (!firstShuttle || !lastShuttle) {
-      ctx.toast("Enter the first and last shuttle times first");
+    const valid = ambReqs.filter((r) => r.start && r.end);
+    if (valid.length === 0) {
+      ctx.toast("Enter the required ambassador times first");
       return;
     }
-    const win = ambassadorWindow(firstShuttle, lastShuttle, settings);
-    const total = Math.max(1, ambDock + ambVbwc);
-    const dockSpans = splitShift(win.dock, settings);
-    // Build `total` ambassador shift rows, distributing splits.
-    const spans = total <= dockSpans.length ? dockSpans.slice(0, total) : padSpans(dockSpans, total);
-    const dock = ship.dock ?? "D1";
-    const newShifts: LocalShift[] = spans.map((sp, i) => ({
-      id: crypto.randomUUID(),
-      role_type: "ambassador",
-      shift_number: i + 1,
-      start_time: i < ambVbwc ? win.vbwc.start : sp.start,
-      end_time: i < ambVbwc ? win.vbwc.end : sp.end,
-      location: defaultShiftLocation(i, total, dock),
-      assigned_staff_id: null,
-      confirmed: false,
-    }));
+    const newShifts: LocalShift[] = [];
+    let num = 1;
+    for (const req of valid) {
+      const spans = splitShift({ start: req.start, end: req.end }, settings);
+      const count = Math.max(1, req.count || 1);
+      for (let person = 0; person < count; person++) {
+        for (const sp of spans) {
+          newShifts.push({
+            id: crypto.randomUUID(),
+            role_type: "ambassador",
+            shift_number: num++,
+            start_time: sp.start,
+            end_time: sp.end,
+            location: req.location || ship.dock || "VBWC",
+            assigned_staff_id: null,
+            confirmed: false,
+          });
+        }
+      }
+    }
     setShifts((p) => [...p.filter((s) => s.role_type !== "ambassador"), ...newShifts]);
     setShuttleWarning(false);
     ctx.toast(`Generated ${newShifts.length} ambassador shift(s)`);
@@ -424,18 +445,38 @@ export function RotaPanel({
       {/* Ambassadors */}
       <Section
         title="Ambassadors"
-        action={<AddBtn onClick={generateAmbassadors} label="Auto-calculate" />}
+        action={
+          <div className="flex gap-3">
+            <AddBtn onClick={addAmbReq} label="+ requirement" />
+            <AddBtn onClick={generateAmbassadors} label="Auto-calculate" />
+          </div>
+        }
       >
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <NumF label="# at Dock" value={ambDock} onChange={setAmbDock} />
-          <NumF label="# at VBWC" value={ambVbwc} onChange={setAmbVbwc} />
+        <p className="text-[11px] text-vb-muted mb-2">
+          Enter what&apos;s required (e.g. 1 × 09:00–16:00 at the dock). Auto-calculate
+          splits each into shifts of ≤5h, rounded to 15 min.
+        </p>
+        <div className="space-y-2 mb-3">
+          {ambReqs.map((req) => (
+            <div key={req.id} className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 items-end">
+              <NumF label="# Ambassadors" value={req.count} onChange={(v) => updateAmbReq(req.id, { count: v })} />
+              <TimeSel label="Required from" value={req.start} onChange={(v) => updateAmbReq(req.id, { start: v })} />
+              <TimeSel label="Required to" value={req.end} onChange={(v) => updateAmbReq(req.id, { end: v })} />
+              <Sel label="Location" value={req.location} onChange={(v) => updateAmbReq(req.id, { location: v })}
+                options={LOCATIONS.map((l) => [l, l] as [string, string])} />
+              <button onClick={() => removeAmbReq(req.id)} className="text-xs text-red-600 hover:underline pb-2" title="Remove requirement">✕</button>
+            </div>
+          ))}
         </div>
         {sectionShifts("ambassador").length === 0 ? (
-          <Empty>Set counts and shuttle times, then auto-calculate shift times (split per duration rules).</Empty>
+          <Empty>Add the required ambassador times/locations above, then Auto-calculate.</Empty>
         ) : (
-          sectionShifts("ambassador").map((s) => (
-            <ShiftRow key={s.id} shift={s} staff={ambassadors} allStaff={ctx.staff} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} editableTimes />
-          ))
+          <div className="border-t border-vb-border pt-2">
+            <p className="text-[11px] font-semibold text-vb-muted mb-1">Generated shifts</p>
+            {sectionShifts("ambassador").map((s) => (
+              <ShiftRow key={s.id} shift={s} staff={ambassadors} allStaff={ctx.staff} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} editableTimes />
+            ))}
+          </div>
         )}
       </Section>
 
@@ -481,11 +522,6 @@ function coordinatorRow(ship: Ship): LocalShift {
   };
 }
 
-function padSpans(spans: { start: string; end: string }[], total: number) {
-  const out = [...spans];
-  while (out.length < total) out.push(spans[spans.length - 1]);
-  return out;
-}
 function stripId<T extends { id: string }>(o: T) {
   const { id: _id, ...rest } = o;
   return rest;
