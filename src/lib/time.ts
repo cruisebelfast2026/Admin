@@ -45,3 +45,18 @@ export function durationHours(start: string, end: string): number {
   if (s == null || e == null) return 0;
   return (e - s) / 60;
 }
+
+/** True if two time spans overlap (touching endpoints do NOT count as overlap). */
+export function timesOverlap(
+  aStart: string | null,
+  aEnd: string | null,
+  bStart: string | null,
+  bEnd: string | null,
+): boolean {
+  const as = toMinutes(aStart);
+  const ae = toMinutes(aEnd);
+  const bs = toMinutes(bStart);
+  const be = toMinutes(bEnd);
+  if (as == null || ae == null || bs == null || be == null) return false;
+  return as < be && bs < ae;
+}

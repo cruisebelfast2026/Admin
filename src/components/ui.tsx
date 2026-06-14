@@ -111,18 +111,24 @@ export function SidePanel({
   title,
   children,
   actions,
+  wide,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: React.ReactNode;
   actions?: React.ReactNode;
+  wide?: boolean;
 }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative bg-vb-bg w-full max-w-3xl h-full shadow-2xl overflow-y-auto">
+      <div
+        className={`relative bg-vb-bg w-full h-full shadow-2xl overflow-y-auto ${
+          wide ? "max-w-none" : "max-w-3xl"
+        }`}
+      >
         <div className="sticky top-0 bg-vb-navy text-white px-5 py-3 flex items-center justify-between z-10">
           <h3 className="font-heading font-semibold">{title}</h3>
           <div className="flex items-center gap-3">

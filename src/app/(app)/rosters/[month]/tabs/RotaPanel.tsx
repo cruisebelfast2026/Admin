@@ -8,11 +8,12 @@ import {
   ambassadorWindow,
   availabilityCoversShift,
   defaultShiftLocation,
+  periodsForStart,
   splitShift,
   travelAdvisorShifts,
   type CalcSettings,
 } from "@/lib/rota-calc";
-import { quarterHourOptions } from "@/lib/time";
+import { quarterHourOptions, timesOverlap } from "@/lib/time";
 import { nullEmpty, numOrNull } from "@/lib/sanitize";
 import { downloadRotaPdf } from "@/lib/output/pdf";
 import { downloadRotaXlsx } from "@/lib/output/xlsx";
@@ -61,23 +62,56 @@ export function RotaPanel({
   const [ambVbwc, setAmbVbwc] = useState(1);
   const [shuttleWarning, setShuttleWarning] = useState(false);
   const [availability, setAvailability] = useState<Record<string, string>>({});
+  const [expanded, setExpanded] = useState(false);
+  // staffId -> set of periods they're assigned to on OTHER ships the same day.
+  const [elsewhere, setElsewhere] = useState<Record<string, Set<string>>>({});
 
   // Load existing rota data.
   useEffect(() => {
     const supabase = createClient();
     if (!supabase) return;
+    const sameDayShipIds = ctx.ships
+      .filter((s) => s.date === ship.date && s.id !== ship.id)
+      .map((s) => s.id);
     (async () => {
-      const [sh, bus, avail] = await Promise.all([
+      const [sh, bus, avail, coord, others] = await Promise.all([
         supabase.from("shifts").select("*").eq("ship_id", ship.id),
         supabase.from("shuttles").select("*").eq("ship_id", ship.id).order("sort_order"),
         supabase.from("availability").select("staff_id, period").eq("ship_id", ship.id),
+        supabase
+          .from("coordinator_schedule")
+          .select("staff_id")
+          .eq("date", ship.date)
+          .maybeSingle(),
+        sameDayShipIds.length
+          ? supabase
+              .from("shifts")
+              .select("assigned_staff_id, start_time")
+              .in("ship_id", sameDayShipIds)
+          : Promise.resolve({ data: [] as { assigned_staff_id: string | null; start_time: string | null }[] }),
       ]);
       if (sh.data) {
         let next = sh.data as LocalShift[];
         if (!next.some((s) => s.role_type === "coordinator"))
           next = [...next, coordinatorRow(ship)];
+        // 6.3 — auto-populate the coordinator from the on-duty schedule.
+        const dutyStaff = (coord.data as { staff_id: string | null } | null)?.staff_id;
+        if (dutyStaff)
+          next = next.map((s) =>
+            s.role_type === "coordinator" && !s.assigned_staff_id
+              ? { ...s, assigned_staff_id: dutyStaff }
+              : s,
+          );
         setShifts(next);
       }
+      // 9.4.5 — who is already assigned elsewhere the same day, by period.
+      const elseMap: Record<string, Set<string>> = {};
+      for (const r of (others.data as { assigned_staff_id: string | null; start_time: string | null }[]) ?? []) {
+        if (!r.assigned_staff_id || !r.start_time) continue;
+        const set = (elseMap[r.assigned_staff_id] ??= new Set());
+        for (const p of periodsForStart(r.start_time, settings)) set.add(p);
+      }
+      setElsewhere(elseMap);
       if (bus.data)
         setShuttles(
           (bus.data as Shuttle[]).map((b) => ({
@@ -96,6 +130,8 @@ export function RotaPanel({
         setAvailability(map);
       }
     })();
+    // Intentionally an on-open load keyed by ship; settings/ships read as snapshots.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ship]);
 
   const coordinators = ctx.staff.filter((s) => s.is_coordinator);
@@ -175,6 +211,22 @@ export function RotaPanel({
   }
 
   function setAssignment(shiftId: string, staffId: string | null) {
+    if (staffId) {
+      // 16.2 — hard block: a person cannot hold two overlapping shifts on the
+      // same rota.
+      const target = shifts.find((s) => s.id === shiftId);
+      const clash = shifts.find(
+        (s) =>
+          s.id !== shiftId &&
+          s.assigned_staff_id === staffId &&
+          timesOverlap(target?.start_time ?? null, target?.end_time ?? null, s.start_time, s.end_time),
+      );
+      if (clash) {
+        const name = ctx.staff.find((s) => s.id === staffId)?.display_name ?? "That person";
+        ctx.toast(`${name} already has an overlapping shift on this rota`);
+        return;
+      }
+    }
     setShifts((p) =>
       p.map((s) => (s.id === shiftId ? { ...s, assigned_staff_id: staffId } : s)),
     );
@@ -276,10 +328,12 @@ export function RotaPanel({
   return (
     <SidePanel
       open
+      wide={expanded}
       onClose={onClose}
       title={`Rota — ${ship.ship_name}`}
       actions={
         <div className="flex gap-2">
+          <button onClick={() => setExpanded((e) => !e)} className="bg-white/15 hover:bg-white/25 text-white text-xs font-semibold rounded-vb px-3 py-1.5" title={expanded ? "Collapse" : "Expand to full screen"}>{expanded ? "Collapse" : "Expand"}</button>
           <button onClick={() => download("pdf")} className="bg-white/15 hover:bg-white/25 text-white text-xs font-semibold rounded-vb px-3 py-1.5">PDF</button>
           <button onClick={() => download("xlsx")} className="bg-white/15 hover:bg-white/25 text-white text-xs font-semibold rounded-vb px-3 py-1.5">XLS</button>
           <button onClick={downloadSignage} className="bg-white/15 hover:bg-white/25 text-white text-xs font-semibold rounded-vb px-3 py-1.5">Signage</button>
@@ -349,7 +403,7 @@ export function RotaPanel({
       {/* Coordinator */}
       <Section title="Coordinator">
         {sectionShifts("coordinator").map((s) => (
-          <ShiftRow key={s.id} shift={s} staff={coordinators} onAssign={setAssignment} onChange={updateShift} availability={availability} />
+          <ShiftRow key={s.id} shift={s} staff={coordinators} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} />
         ))}
       </Section>
 
@@ -359,7 +413,7 @@ export function RotaPanel({
           <Empty>Auto-generate TA shifts (arrival + 30 min, 4h; 2 TAs if capacity ≥ {settings.ta_capacity_threshold}).</Empty>
         ) : (
           sectionShifts("travel_advisor").map((s) => (
-            <ShiftRow key={s.id} shift={s} staff={travelAdvisors} onAssign={setAssignment} onChange={updateShift} availability={availability} />
+            <ShiftRow key={s.id} shift={s} staff={travelAdvisors} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} />
           ))
         )}
       </Section>
@@ -377,7 +431,7 @@ export function RotaPanel({
           <Empty>Set counts and shuttle times, then auto-calculate shift times (split per duration rules).</Empty>
         ) : (
           sectionShifts("ambassador").map((s) => (
-            <ShiftRow key={s.id} shift={s} staff={ambassadors} onAssign={setAssignment} onChange={updateShift} availability={availability} editableTimes />
+            <ShiftRow key={s.id} shift={s} staff={ambassadors} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} editableTimes />
           ))
         )}
       </Section>
@@ -388,7 +442,7 @@ export function RotaPanel({
           <Empty>Add up to 3 volunteers. Start time defaults to the first ambassador shift.</Empty>
         ) : (
           sectionShifts("volunteer").map((s) => (
-            <ShiftRow key={s.id} shift={s} staff={volunteers} onAssign={setAssignment} onChange={updateShift} availability={availability} noEnd />
+            <ShiftRow key={s.id} shift={s} staff={volunteers} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} noEnd />
           ))
         )}
       </Section>
@@ -488,6 +542,8 @@ function ShiftRow({
   onAssign,
   onChange,
   availability,
+  elsewhere,
+  settings,
   editableTimes,
   noEnd,
 }: {
@@ -496,6 +552,8 @@ function ShiftRow({
   onAssign: (id: string, staffId: string | null) => void;
   onChange: (id: string, patch: Partial<LocalShift>) => void;
   availability: Record<string, string>;
+  elsewhere: Record<string, Set<string>>;
+  settings: CalcSettings;
   editableTimes?: boolean;
   noEnd?: boolean;
 }) {
@@ -509,16 +567,31 @@ function ShiftRow({
     });
   }, [staff, availability, shift.start_time]);
 
+  // 9.4.5 — flag staff already assigned elsewhere the same day/period.
+  const shiftPeriods = shift.start_time ? periodsForStart(shift.start_time, settings) : [];
+  const assignedElsewhere = (id: string) => {
+    const set = elsewhere[id];
+    return set ? shiftPeriods.some((p) => set.has(p)) : false;
+  };
+  const warnSelected =
+    shift.assigned_staff_id && assignedElsewhere(shift.assigned_staff_id);
+
   return (
     <div className="flex flex-wrap items-center gap-2 py-1.5 border-b border-vb-border last:border-0">
       <select
         value={shift.assigned_staff_id ?? ""}
         onChange={(e) => onAssign(shift.id, e.target.value || null)}
-        className="border border-vb-border rounded px-2 py-1 text-sm min-w-[140px] flex-1"
+        className={`border rounded px-2 py-1 text-sm min-w-[140px] flex-1 ${
+          warnSelected ? "border-amber-500 bg-amber-50" : "border-vb-border"
+        }`}
+        title={warnSelected ? "Also assigned on another ship the same day/period" : ""}
       >
         <option value="">— unassigned —</option>
         {eligible.map((s) => (
-          <option key={s.id} value={s.id}>{s.display_name}</option>
+          <option key={s.id} value={s.id}>
+            {assignedElsewhere(s.id) ? "⚠ " : ""}
+            {s.display_name}
+          </option>
         ))}
       </select>
 

@@ -109,6 +109,15 @@ export interface ChangeLogEntry {
   created_at: string;
 }
 
+export interface CoordinatorSchedule {
+  id: string;
+  year: number;
+  date: string;
+  staff_id: string | null;
+  coordinator_initial: string | null;
+  created_at: string;
+}
+
 export interface Settings {
   id: string;
   ambassador_dock_offset_mins: number;
