@@ -6,6 +6,16 @@ tab of the application.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.14.0] — 2026-06-14 — Ambassador requirements input
+
+### Changed
+- The rota **Ambassadors** section now takes **requirement rows** — count +
+  required from/to time + location (e.g. 1 × 09:00–16:00 at the dock). Multiple
+  requirements can be added. **Auto-calculate** turns each into assignable
+  shifts, splitting anything long into ≤5h shifts rounded to 15 min (replacing
+  the previous count + shuttle-window approach).
+- Rota time dropdowns are limited to **06:00–21:00** (operating hours).
+
 ## [0.13.1] — 2026-06-14 — Schedule "time in port" parsing
 
 ### Fixed
