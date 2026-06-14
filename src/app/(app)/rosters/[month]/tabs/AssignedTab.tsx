@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { periodsForStart } from "@/lib/rota-calc";
-import type { Shift, Ship } from "@/lib/types";
+import { availabilityCoversShift, periodsForStart } from "@/lib/rota-calc";
+import type { Shift, Ship, Staff } from "@/lib/types";
 import type { MonthContext } from "../MonthView";
+
+const ROLE_FILTER: Record<string, (s: Staff) => boolean> = {
+  ambassador: (s) => s.is_ambassador,
+  travel_advisor: (s) => s.is_travel_advisor,
+  coordinator: (s) => s.is_coordinator,
+  volunteer: (s) => s.is_volunteer,
+};
 
 type StatusKey = "info_received" | "rota_sent" | "volunteers_sent" | "confirmed";
 const STATUS_COLS: { key: StatusKey; label: string }[] = [
@@ -18,6 +25,7 @@ export function AssignedTab({ ctx }: { ctx: MonthContext }) {
   // availability: shipId -> staffId -> period
   const [availability, setAvailability] = useState<Record<string, Record<string, string>>>({});
   const [shifts, setShifts] = useState<Shift[]>([]);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -108,6 +116,31 @@ export function AssignedTab({ ctx }: { ctx: MonthContext }) {
     return avail < req;
   }
 
+  // 10.4 — assign a specific shift from the expanded row (two-way sync w/ rota).
+  async function assignShift(shift: Shift, staffId: string | null) {
+    setShifts((p) =>
+      p.map((s) => (s.id === shift.id ? { ...s, assigned_staff_id: staffId, confirmed: false } : s)),
+    );
+    const supabase = createClient();
+    if (supabase) {
+      await supabase
+        .from("shifts")
+        .update({ assigned_staff_id: staffId, confirmed: false })
+        .eq("id", shift.id);
+      ctx.bumpSync();
+    }
+  }
+
+  function eligibleFor(shift: Shift): Staff[] {
+    const roleOk = ROLE_FILTER[shift.role_type] ?? (() => true);
+    return ctx.staff.filter((s) => {
+      if (!roleOk(s)) return false;
+      const avail = availability[shift.ship_id]?.[s.id];
+      if (!avail || !shift.start_time) return true;
+      return availabilityCoversShift(avail, shift.start_time);
+    });
+  }
+
   async function toggleStatus(ship: Ship, key: StatusKey) {
     await ctx.patchShip(ship, { [key]: !ship[key] } as Partial<Ship>);
   }
@@ -175,9 +208,21 @@ export function AssignedTab({ ctx }: { ctx: MonthContext }) {
             {ctx.ships.map((ship) => {
               const assignedCount = staffCols.filter((st) => assignment[ship.id]?.[st.id]).length;
               const availCount = staffCols.filter((st) => availability[ship.id]?.[st.id]).length;
+              const shipShifts = shifts
+                .filter((s) => s.ship_id === ship.id && s.role_type !== "volunteer")
+                .sort((a, b) => a.role_type.localeCompare(b.role_type) || a.shift_number - b.shift_number);
+              const isOpen = expanded === ship.id;
               return (
-                <tr key={ship.id} className="border-b border-vb-border last:border-0">
+                <Fragment key={ship.id}>
+                <tr className="border-b border-vb-border last:border-0">
                   <td className="px-2 py-1.5 sticky-col font-semibold whitespace-nowrap">
+                    <button
+                      onClick={() => setExpanded(isOpen ? null : ship.id)}
+                      className="mr-1 text-vb-muted"
+                      title="Expand shifts"
+                    >
+                      {isOpen ? "▾" : "▸"}
+                    </button>
                     {new Date(ship.date + "T00:00:00").toLocaleDateString("en-GB")}
                   </td>
                   <td className="px-2 py-1.5 font-semibold whitespace-nowrap">
@@ -227,6 +272,38 @@ export function AssignedTab({ ctx }: { ctx: MonthContext }) {
                     );
                   })}
                 </tr>
+                {isOpen && (
+                  <tr className="bg-vb-bg">
+                    <td colSpan={7 + staffCols.length} className="px-4 py-2">
+                      {shipShifts.length === 0 ? (
+                        <p className="text-xs text-vb-muted">No shifts generated yet — open the rota to create them.</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {shipShifts.map((sh) => (
+                            <div key={sh.id} className="flex items-center gap-2 text-xs">
+                              <span className="w-28 font-semibold capitalize">{sh.role_type.replace("_", " ")}</span>
+                              <span className="w-24 text-vb-muted">
+                                {sh.start_time?.slice(0, 5) ?? "—"}{sh.end_time ? `–${sh.end_time.slice(0, 5)}` : ""}
+                              </span>
+                              <span className="w-16 text-vb-muted">{sh.location ?? ""}</span>
+                              <select
+                                value={sh.assigned_staff_id ?? ""}
+                                onChange={(e) => assignShift(sh, e.target.value || null)}
+                                className="border border-vb-border rounded px-2 py-1 text-xs min-w-[160px]"
+                              >
+                                <option value="">— unassigned —</option>
+                                {eligibleFor(sh).map((s) => (
+                                  <option key={s.id} value={s.id}>{s.display_name}</option>
+                                ))}
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { logChange } from "@/lib/changelog";
-import { nullEmpty } from "@/lib/sanitize";
+import { nullEmpty, numOrNull } from "@/lib/sanitize";
 import type { ShipRequest } from "@/lib/types";
 import type { MonthContext } from "../MonthView";
 
@@ -39,6 +39,7 @@ export function ShipRequestsTab({ ctx }: { ctx: MonthContext }) {
         "requested_start_time",
         "requested_end_time",
       ]);
+      payload.ambassador_count = numOrNull(payload.ambassador_count);
       await supabase
         .from("ship_requests")
         .upsert(payload, { onConflict: "ship_id" });

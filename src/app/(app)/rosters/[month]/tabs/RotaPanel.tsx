@@ -19,7 +19,7 @@ import { downloadRotaPdf } from "@/lib/output/pdf";
 import { downloadRotaXlsx } from "@/lib/output/xlsx";
 import { rotaFileName } from "@/lib/output/filename";
 import { signageForCruiseLine, signageUrl } from "@/lib/signage";
-import type { Ship, Shuttle, Staff } from "@/lib/types";
+import type { Settings, Ship, Shuttle, Staff } from "@/lib/types";
 import type { MonthContext } from "../MonthView";
 
 interface LocalShift {
@@ -56,7 +56,10 @@ export function RotaPanel({
   const settings = { ...DEFAULT_SETTINGS, ...ctx.settings } as CalcSettings;
   const [shifts, setShifts] = useState<LocalShift[]>(() => [coordinatorRow(ship)]);
   const [shuttles, setShuttles] = useState<LocalShuttle[]>([]);
-  const [vbwcHours, setVbwcHours] = useState(ship.vbwc_opening_hours ?? "");
+  const [vbwcHours, setVbwcHours] = useState(
+    // 9.1/14.2 — default new rotas from the Settings VBWC hours for that weekday.
+    () => ship.vbwc_opening_hours ?? defaultVbwcHours(ship.date, ctx.settings),
+  );
   const [payment, setPayment] = useState(ship.payment_notes ?? "");
   const [ambDock, setAmbDock] = useState(1);
   const [ambVbwc, setAmbVbwc] = useState(1);
@@ -403,7 +406,7 @@ export function RotaPanel({
       {/* Coordinator */}
       <Section title="Coordinator">
         {sectionShifts("coordinator").map((s) => (
-          <ShiftRow key={s.id} shift={s} staff={coordinators} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} />
+          <ShiftRow key={s.id} shift={s} staff={coordinators} allStaff={ctx.staff} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} />
         ))}
       </Section>
 
@@ -413,7 +416,7 @@ export function RotaPanel({
           <Empty>Auto-generate TA shifts (arrival + 30 min, 4h; 2 TAs if capacity ≥ {settings.ta_capacity_threshold}).</Empty>
         ) : (
           sectionShifts("travel_advisor").map((s) => (
-            <ShiftRow key={s.id} shift={s} staff={travelAdvisors} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} />
+            <ShiftRow key={s.id} shift={s} staff={travelAdvisors} allStaff={ctx.staff} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} />
           ))
         )}
       </Section>
@@ -431,7 +434,7 @@ export function RotaPanel({
           <Empty>Set counts and shuttle times, then auto-calculate shift times (split per duration rules).</Empty>
         ) : (
           sectionShifts("ambassador").map((s) => (
-            <ShiftRow key={s.id} shift={s} staff={ambassadors} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} editableTimes />
+            <ShiftRow key={s.id} shift={s} staff={ambassadors} allStaff={ctx.staff} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} editableTimes />
           ))
         )}
       </Section>
@@ -442,12 +445,27 @@ export function RotaPanel({
           <Empty>Add up to 3 volunteers. Start time defaults to the first ambassador shift.</Empty>
         ) : (
           sectionShifts("volunteer").map((s) => (
-            <ShiftRow key={s.id} shift={s} staff={volunteers} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} noEnd />
+            <ShiftRow key={s.id} shift={s} staff={volunteers} allStaff={ctx.staff} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} noEnd />
           ))
         )}
       </Section>
     </SidePanel>
   );
+}
+
+const VBWC_DAY_KEYS = [
+  "vbwc_hours_sun",
+  "vbwc_hours_mon",
+  "vbwc_hours_tue",
+  "vbwc_hours_wed",
+  "vbwc_hours_thu",
+  "vbwc_hours_fri",
+  "vbwc_hours_sat",
+] as const;
+
+function defaultVbwcHours(date: string, settings: Partial<Settings>): string {
+  const day = new Date(date + "T00:00:00").getDay();
+  return (settings[VBWC_DAY_KEYS[day]] as string | null | undefined) ?? "";
 }
 
 function coordinatorRow(ship: Ship): LocalShift {
@@ -539,6 +557,7 @@ function TimeSel({ label, value, onChange }: { label: string; value: string | nu
 function ShiftRow({
   shift,
   staff,
+  allStaff,
   onAssign,
   onChange,
   availability,
@@ -549,6 +568,7 @@ function ShiftRow({
 }: {
   shift: LocalShift;
   staff: Staff[];
+  allStaff: Staff[];
   onAssign: (id: string, staffId: string | null) => void;
   onChange: (id: string, patch: Partial<LocalShift>) => void;
   availability: Record<string, string>;
@@ -557,15 +577,20 @@ function ShiftRow({
   editableTimes?: boolean;
   noEnd?: boolean;
 }) {
+  // 6.2/16.2 — override expands the pool to all active staff (e.g. assign a
+  // Travel Advisor to an Ambassador slot).
+  const [override, setOverride] = useState(false);
+  const pool = override ? allStaff : staff;
+
   // Filter to staff available for the shift's period (Section 9.4.5).
   const eligible = useMemo(() => {
-    if (!shift.start_time) return staff;
-    return staff.filter((s) => {
+    if (!shift.start_time) return pool;
+    return pool.filter((s) => {
       const avail = availability[s.id];
       if (!avail) return true; // no availability data → show all
       return availabilityCoversShift(avail, shift.start_time!);
     });
-  }, [staff, availability, shift.start_time]);
+  }, [pool, availability, shift.start_time]);
 
   // 9.4.5 — flag staff already assigned elsewhere the same day/period.
   const shiftPeriods = shift.start_time ? periodsForStart(shift.start_time, settings) : [];
@@ -615,6 +640,11 @@ function ShiftRow({
         <option value="">—</option>
         {LOCATIONS.map((l) => <option key={l} value={l}>{l}</option>)}
       </select>
+
+      <label className="flex items-center gap-1 text-[11px] text-vb-muted" title="Show all staff regardless of role (e.g. assign a TA as Ambassador)">
+        <input type="checkbox" checked={override} onChange={(e) => setOverride(e.target.checked)} className="accent-vb-teal w-3.5 h-3.5" />
+        override
+      </label>
     </div>
   );
 }

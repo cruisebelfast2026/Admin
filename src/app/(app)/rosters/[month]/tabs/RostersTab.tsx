@@ -5,7 +5,10 @@ import { ConfirmDialog } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import { DOCKS, ROTA_STATUSES, type RotaStatus } from "@/lib/constants";
 import { addShip, assignSeasonNumbers } from "@/lib/ships-store";
-import type { Ship } from "@/lib/types";
+import { downloadRotaPdf } from "@/lib/output/pdf";
+import { downloadRotaXlsx } from "@/lib/output/xlsx";
+import { rotaFileName } from "@/lib/output/filename";
+import type { Shift, Ship, Shuttle } from "@/lib/types";
 import { RotaPanel } from "./RotaPanel";
 import type { MonthContext } from "../MonthView";
 
@@ -54,6 +57,33 @@ export function RostersTab({ ctx }: { ctx: MonthContext }) {
   async function setStatus(s: Ship, status: RotaStatus) {
     await ctx.patchShip(s, { rota_status: status });
     ctx.toast("Status updated");
+  }
+
+  // 8.1 — per-row Download PDF / XLS: fetch the ship's saved rota, then render.
+  async function downloadRota(ship: Ship, kind: "pdf" | "xlsx") {
+    const supabase = createClient();
+    let shifts: Shift[] = [];
+    let shuttles: Shuttle[] = [];
+    if (supabase) {
+      const [sh, bus] = await Promise.all([
+        supabase.from("shifts").select("*").eq("ship_id", ship.id),
+        supabase.from("shuttles").select("*").eq("ship_id", ship.id).order("sort_order"),
+      ]);
+      shifts = (sh.data as Shift[]) ?? [];
+      shuttles = (bus.data as Shuttle[]) ?? [];
+    }
+    const payload = {
+      ship,
+      shifts,
+      shuttles,
+      vbwcHours: ship.vbwc_opening_hours ?? "",
+      payment: ship.payment_notes ?? "",
+      staffName: (id: string | null) =>
+        ctx.staff.find((s) => s.id === id)?.display_name ?? "—",
+    };
+    const fileName = rotaFileName(ship);
+    if (kind === "pdf") await downloadRotaPdf(payload, fileName);
+    else downloadRotaXlsx(payload, fileName);
   }
 
   return (
@@ -198,6 +228,8 @@ export function RostersTab({ ctx }: { ctx: MonthContext }) {
                       ) : (
                         <div className="flex items-center justify-end gap-2">
                           <button onClick={() => setOpenShip(s)} className="text-vb-teal font-semibold hover:underline">Open Rota</button>
+                          <button onClick={() => downloadRota(s, "pdf")} className="text-vb-muted hover:underline">PDF</button>
+                          <button onClick={() => downloadRota(s, "xlsx")} className="text-vb-muted hover:underline">XLS</button>
                           <button onClick={() => startEdit(s)} className="text-vb-muted hover:underline">Edit</button>
                           <button onClick={() => setDeleteTarget(s)} className="text-red-600 hover:underline">Delete</button>
                         </div>

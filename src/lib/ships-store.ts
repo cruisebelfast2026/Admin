@@ -5,6 +5,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { logChange } from "./changelog";
+import { nullEmpty, numOrNull } from "./sanitize";
 import type { ParsedShipRow } from "./parse-schedule";
 import type { Ship } from "./types";
 
@@ -127,11 +128,23 @@ export async function updateShip(
   ship: Ship,
   patch: Partial<Ship>,
 ): Promise<Ship> {
-  const next = { ...ship, ...patch, updated_at: new Date().toISOString() };
+  // Coerce cleared time/text fields to null and NaN numbers to null so the
+  // update doesn't fail against Postgres time/integer columns.
+  const clean = nullEmpty(patch, [
+    "arrival_time",
+    "departure_time",
+    "date",
+    "dock",
+    "cruise_line",
+    "vbwc_opening_hours",
+    "payment_notes",
+  ]);
+  if ("capacity" in clean) clean.capacity = numOrNull(clean.capacity);
+  const next = { ...ship, ...clean, updated_at: new Date().toISOString() };
   if (!supabase) return next;
   const { data } = await supabase
     .from("ships")
-    .update(patch)
+    .update(clean)
     .eq("id", ship.id)
     .select()
     .single();
@@ -140,7 +153,7 @@ export async function updateShip(
     entity_type: "ship",
     entity_id: ship.id,
     old_value: ship,
-    new_value: patch,
+    new_value: clean,
   });
   return (data as Ship) ?? next;
 }

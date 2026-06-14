@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/PageHeader";
 import { DEFAULT_SETTINGS, SEASON_MONTHS } from "@/lib/constants";
+import { getSeasonYear } from "@/lib/season";
 import { createClient } from "@/lib/supabase/server";
 import type { Settings, Ship, Staff } from "@/lib/types";
 import { MonthView } from "./MonthView";
@@ -19,7 +20,7 @@ export default async function MonthPage({
   if (!monthDef) notFound();
 
   const supabase = await createClient();
-  const year = new Date().getFullYear();
+  const year = await getSeasonYear();
   let ships: Ship[] = [];
   let staff: Staff[] = [];
   let settings: Partial<Settings> = { ...DEFAULT_SETTINGS };

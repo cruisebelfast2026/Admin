@@ -11,7 +11,8 @@
   "observability": {
     "enabled": true
   }
-  // Set secrets with: npx wrangler secret put NEXT_PUBLIC_SUPABASE_URL
-  //                   npx wrangler secret put NEXT_PUBLIC_SUPABASE_ANON_KEY
-  // (or add them as plaintext vars in the Cloudflare dashboard).
+  // NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY are inlined into
+  // the bundle at BUILD time — they must be present when `npm run deploy` runs
+  // (e.g. GitHub Actions secrets, or Cloudflare "Workers Builds" *build*
+  // variables). A runtime `wrangler secret` does NOT work for these.
 }
