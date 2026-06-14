@@ -53,6 +53,11 @@ export function mapHeaders(headers: string[]): Record<string, keyof ParsedShipRo
 export function parseDate(value: unknown): string | null {
   if (value == null || value === "") return null;
   if (value instanceof Date) return value.toISOString().slice(0, 10);
+  // Excel serial date (1900 system; epoch 1899-12-30).
+  if (typeof value === "number" && value > 59) {
+    const d = new Date(Date.UTC(1899, 11, 30) + value * 86400000);
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  }
   const s = String(value).trim();
   // DD/MM/YYYY or DD-MM-YYYY
   let m = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/.exec(s);

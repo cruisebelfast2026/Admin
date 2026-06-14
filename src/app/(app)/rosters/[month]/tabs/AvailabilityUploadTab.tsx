@@ -1,146 +1,228 @@
 "use client";
 
-import { useState } from "react";
-import { ConfirmDialog } from "@/components/ui";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { readSheetMatrix } from "@/lib/parse-file";
-import { parseAvailabilityMatrix, type ParsedAvailability } from "@/lib/parse-availability";
+import {
+  parseStaffAvailabilityMatrix,
+  parseStaffAvailabilityPdf,
+} from "@/lib/parse-staff-availability";
 import { logChange } from "@/lib/changelog";
+import type { Staff } from "@/lib/types";
 import type { MonthContext } from "../MonthView";
 
-export function AvailabilityUploadTab({ ctx }: { ctx: MonthContext }) {
-  const [parsed, setParsed] = useState<ParsedAvailability | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
+interface Result {
+  busy?: boolean;
+  count?: number;
+  unmatched?: number;
+  error?: string;
+  fileName?: string;
+}
 
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setError(null);
-    setParsed(null);
-    try {
-      const matrix = await readSheetMatrix(file);
-      const result = parseAvailabilityMatrix(matrix);
-      if (result.cells.length === 0) {
-        const isPdf = file.name.toLowerCase().endsWith(".pdf");
-        setError(
-          isPdf
-            ? "Couldn't extract availability from this PDF (it may be scanned). Upload Excel/CSV instead."
-            : "No availability markers (AM/PM/EV) were found in this sheet.",
-        );
-        return;
-      }
-      setParsed(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not read file.");
+function normShip(n: unknown): string {
+  return String(n ?? "")
+    .toUpperCase()
+    .replace(/\([^)]*\)/g, "")
+    .replace(/[^A-Z0-9 ]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function AvailabilityUploadTab({ ctx }: { ctx: MonthContext }) {
+  // Volunteers have no availability sheet (brief §6.4) — list everyone else.
+  const staff = ctx.staff.filter(
+    (s) => s.is_ambassador || s.is_coordinator || s.is_travel_advisor,
+  );
+  const [results, setResults] = useState<Record<string, Result>>({});
+
+  // Ship lookup by date + name (fallback to date when only one ship that day).
+  const { byDateName, byDate, shipIds } = useMemo(() => {
+    const byDateName = new Map<string, string>();
+    const byDate = new Map<string, string[]>();
+    for (const s of ctx.ships) {
+      byDateName.set(`${s.date}|${normShip(s.ship_name)}`, s.id);
+      const list = byDate.get(s.date) ?? [];
+      list.push(s.id);
+      byDate.set(s.date, list);
     }
+    return { byDateName, byDate, shipIds: ctx.ships.map((s) => s.id) };
+  }, [ctx.ships]);
+
+  // Existing per-staff counts for the month.
+  useEffect(() => {
+    const supabase = createClient();
+    if (!supabase || shipIds.length === 0) return;
+    (async () => {
+      const { data } = await supabase
+        .from("availability")
+        .select("staff_id")
+        .in("ship_id", shipIds);
+      const counts: Record<string, Result> = {};
+      for (const r of (data as { staff_id: string }[]) ?? []) {
+        counts[r.staff_id] = { count: (counts[r.staff_id]?.count ?? 0) + 1 };
+      }
+      setResults((prev) => ({ ...counts, ...prev }));
+    })();
+  }, [shipIds]);
+
+  function matchShip(date: string, shipName: string | null): string | null {
+    const byKey = byDateName.get(`${date}|${normShip(shipName)}`);
+    if (byKey) return byKey;
+    const ids = byDate.get(date);
+    return ids && ids.length === 1 ? ids[0] : null;
   }
 
-  // Match parsed names/dates to staff + ships in this month.
-  const staffByName = new Map(
-    ctx.staff.map((s) => [s.display_name.toLowerCase(), s.id]),
-  );
-  const shipByKey = new Map(ctx.ships.map((s) => [s.date, s.id]));
+  async function onFile(staffMember: Staff, file: File) {
+    setResults((p) => ({ ...p, [staffMember.id]: { busy: true, fileName: file.name } }));
+    try {
+      const rows = file.name.toLowerCase().endsWith(".pdf")
+        ? await parseStaffAvailabilityPdf(file)
+        : parseStaffAvailabilityMatrix(await readSheetMatrix(file));
 
-  const resolved = (parsed?.cells ?? []).map((c) => ({
-    ...c,
-    staffId: staffByName.get(c.staffName.toLowerCase()) ?? null,
-    shipId: c.date ? shipByKey.get(c.date) ?? null : null,
-  }));
-  const matched = resolved.filter((r) => r.staffId && r.shipId);
-  const unmatchedNames = Array.from(
-    new Set(resolved.filter((r) => !r.staffId).map((r) => r.staffName)),
-  );
+      if (rows.length === 0) {
+        setResults((p) => ({
+          ...p,
+          [staffMember.id]: {
+            error: "No AM/PM/EV availability found in this file.",
+            fileName: file.name,
+          },
+        }));
+        return;
+      }
 
-  async function doImport() {
-    setBusy(true);
-    const supabase = createClient();
-    if (supabase) {
-      const shipIds = ctx.ships.map((s) => s.id);
-      if (shipIds.length)
-        await supabase.from("availability").delete().in("ship_id", shipIds);
-      const rows = matched.map((r) => ({
-        staff_id: r.staffId,
-        ship_id: r.shipId,
-        period: r.period,
+      const entries = rows
+        .map((r) => ({ staff_id: staffMember.id, ship_id: matchShip(r.date, r.shipName), period: r.period }))
+        .filter((e): e is { staff_id: string; ship_id: string; period: string } => Boolean(e.ship_id));
+      const unmatched = rows.length - entries.length;
+
+      const supabase = createClient();
+      if (supabase && shipIds.length) {
+        // Replace just this person's availability for the month.
+        await supabase
+          .from("availability")
+          .delete()
+          .eq("staff_id", staffMember.id)
+          .in("ship_id", shipIds);
+        if (entries.length) await supabase.from("availability").insert(entries);
+        await logChange(supabase, {
+          action_type: "availability_uploaded",
+          entity_type: "availability",
+          entity_id: staffMember.id,
+          new_value: { staff: staffMember.display_name, count: entries.length },
+        });
+        ctx.bumpSync();
+      }
+
+      setResults((p) => ({
+        ...p,
+        [staffMember.id]: { count: entries.length, unmatched, fileName: file.name },
       }));
-      if (rows.length) await supabase.from("availability").insert(rows);
-      await logChange(supabase, {
-        action_type: "availability_imported",
-        entity_type: "availability",
-        new_value: { month: ctx.monthValue, count: rows.length },
-      });
+      ctx.toast(`${staffMember.display_name}: ${entries.length} ships imported`);
+    } catch (err) {
+      setResults((p) => ({
+        ...p,
+        [staffMember.id]: {
+          error: err instanceof Error ? err.message : "Could not read file.",
+          fileName: file.name,
+        },
+      }));
     }
-    setBusy(false);
-    setConfirmOpen(false);
-    setParsed(null);
-    ctx.toast(`Imported ${matched.length} availability entries — month replaced`);
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="bg-vb-panel rounded-vb border border-vb-border p-5">
         <h3 className="font-heading font-semibold text-vb-navy mb-1">
           Staff Availability Upload
         </h3>
-        <p className="text-sm text-vb-muted mb-4">
-          Upload the monthly availability sheet (Excel/CSV). Staff names across
-          the top, ship rows down the side, cells marked AM / PM / EV.
-          Re-uploading <strong>replaces</strong> all availability for this month.
+        <p className="text-sm text-vb-muted">
+          Upload each person&apos;s own availability file beside their name —
+          Excel (.xlsx), CSV or PDF. Each file uses the CWA template (Day, Date,
+          In-Port Times, Company, Ship, AM, PM, EV). Marks like{" "}
+          <code>x</code>, <code>Free</code> or <code>yes</code> count as available;
+          blank or <code>NA</code> as not. A new upload <strong>replaces</strong>{" "}
+          that person&apos;s availability for this month.
         </p>
-        <input
-          type="file"
-          accept=".xlsx,.xls,.csv,.pdf"
-          onChange={onFile}
-          className="block text-sm file:mr-3 file:rounded-vb file:border-0 file:bg-vb-navy file:text-white file:px-4 file:py-2 file:font-semibold file:cursor-pointer"
-        />
-        {error && (
-          <p className="text-sm text-red-600 bg-red-50 rounded-vb px-3 py-2 mt-3">{error}</p>
+        {ctx.ships.length === 0 && (
+          <p className="text-xs text-amber-700 bg-amber-50 rounded-vb px-3 py-2 mt-3">
+            ⚠ No ships imported for this month yet — upload the schedule first so
+            availability can be matched to ship dates.
+          </p>
         )}
       </div>
 
-      {parsed && (
-        <div className="bg-vb-panel rounded-vb border border-vb-border p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-semibold text-sm">
-              {matched.length} entries matched · {parsed.staffNames.length} staff columns
-            </h4>
-            <button
-              onClick={() => setConfirmOpen(true)}
-              disabled={busy || matched.length === 0}
-              className="bg-vb-teal hover:bg-vb-teal-dark text-white text-sm font-semibold rounded-vb px-4 py-2 disabled:opacity-60"
-            >
-              Import &amp; replace month
-            </button>
-          </div>
-          {unmatchedNames.length > 0 && (
-            <p className="text-xs text-amber-700 bg-amber-50 rounded-vb px-3 py-2 mb-3">
-              ⚠ Names not found in Staff Setup (skipped): {unmatchedNames.join(", ")}.
-              Check the display names match.
-            </p>
-          )}
-          {ctx.ships.length === 0 && (
-            <p className="text-xs text-amber-700 bg-amber-50 rounded-vb px-3 py-2 mb-3">
-              ⚠ No ships imported for this month yet — entries can&apos;t be linked
-              to ship dates. Import the schedule first.
-            </p>
-          )}
-          <p className="text-xs text-vb-muted">
-            Entries are matched by staff display name and ship date.
+      <div className="bg-vb-panel rounded-vb border border-vb-border overflow-hidden">
+        {staff.length === 0 ? (
+          <p className="text-sm text-vb-muted px-4 py-6 text-center">
+            No staff yet — add Ambassadors / Travel Advisors / Coordinators in
+            Staff Setup.
           </p>
-        </div>
-      )}
-
-      <ConfirmDialog
-        open={confirmOpen}
-        title="Replace month availability?"
-        message={`This deletes all existing availability for this month and imports ${matched.length} entries.`}
-        confirmLabel="Replace"
-        destructive
-        onConfirm={doImport}
-        onCancel={() => setConfirmOpen(false)}
-      />
+        ) : (
+          <ul className="divide-y divide-vb-border">
+            {staff.map((s) => {
+              const r = results[s.id] ?? {};
+              return (
+                <li key={s.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                  <span className="font-semibold text-sm w-40">{s.display_name}</span>
+                  <UploadButton staff={s} onFile={onFile} busy={r.busy} />
+                  <span className="text-xs flex-1">
+                    {r.busy ? (
+                      <span className="text-vb-muted">Reading {r.fileName}…</span>
+                    ) : r.error ? (
+                      <span className="text-red-600">{r.error}</span>
+                    ) : r.count != null ? (
+                      <span className="text-green-700 font-semibold">
+                        {r.count} ships
+                        {r.unmatched ? (
+                          <span className="text-amber-700 font-normal">
+                            {" "}· {r.unmatched} unmatched
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <span className="text-vb-muted">No availability uploaded</span>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </div>
+  );
+}
+
+function UploadButton({
+  staff,
+  onFile,
+  busy,
+}: {
+  staff: Staff;
+  onFile: (s: Staff, f: File) => void;
+  busy?: boolean;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <button
+        onClick={() => ref.current?.click()}
+        disabled={busy}
+        className="bg-vb-navy hover:bg-vb-navy-dark text-white text-xs font-semibold rounded-vb px-3 py-1.5 disabled:opacity-60"
+      >
+        Choose file
+      </button>
+      <input
+        ref={ref}
+        type="file"
+        accept=".xlsx,.xls,.csv,.pdf"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onFile(staff, f);
+          e.target.value = "";
+        }}
+      />
+    </>
   );
 }

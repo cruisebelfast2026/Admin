@@ -6,6 +6,21 @@ tab of the application.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.13.0] — 2026-06-14 — Per-staff availability upload
+
+### Changed
+- **Staff Availability Upload is now per-person.** The page lists every
+  Ambassador / Travel Advisor / Coordinator with a **Choose file** button beside
+  their name; each person's own file (Excel / CSV / PDF, CWA template) is parsed
+  and imported just for them, replacing only that person's month.
+- Tolerant of different marking styles — `x`, `Free`, `yes` (and similar) count
+  as available; blank / `NA` / `no` as not.
+- PDF availability files are parsed position-aware, including wide tables split
+  across multiple pages.
+- Availability rows are matched to ships by date + ship name (falling back to
+  date when only one ship calls that day); unmatched rows are reported.
+- Excel date serials are handled (date parsing + `cellDates`).
+
 ## [0.12.0] — 2026-06-14 — Full-audit fixes & deployment
 
 ### Added
