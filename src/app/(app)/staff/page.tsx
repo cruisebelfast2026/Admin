@@ -1,3 +1,4 @@
+import { CoordinatorScheduleUpload } from "@/components/CoordinatorScheduleUpload";
 import { PageHeader } from "@/components/PageHeader";
 import { createClient } from "@/lib/supabase/server";
 import type { Staff } from "@/lib/types";
@@ -26,6 +27,9 @@ export default async function StaffPage() {
         subtitle="Master record for all personnel. Changes cascade to all rotas and assignments."
       />
       <StaffManager initialStaff={staff} configured={configured} />
+      <div className="mt-5">
+        <CoordinatorScheduleUpload staff={staff} />
+      </div>
     </div>
   );
 }

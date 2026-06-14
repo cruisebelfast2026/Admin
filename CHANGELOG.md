@@ -6,6 +6,22 @@ tab of the application.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.11.0] — 2026-06-14 — Remaining brief rules
+
+### Added
+- **Coordinator Schedule Upload** (§6.3): upload date → coordinator-initial
+  sheet in Staff Setup (migration `0007` adds `coordinator_schedule`); each
+  rota's Coordinator row auto-populates from it and stays overridable.
+- **Same-rota overlap hard block** (§16.2): a person can't be assigned to two
+  overlapping shifts on the same rota.
+- **"Assigned elsewhere" warning flags** (§9.4.5): rota assignment dropdowns
+  mark staff already assigned on another ship the same day/period (amber).
+- **Low Staffing Estimate** (§10.6): the Assigned grid flags ships whose
+  available staff may be insufficient to cover required ambassador/TA shifts.
+- **Expand rota to full screen** (§8.3): the rota side panel has an
+  Expand/Collapse toggle.
+- Tests for time-overlap and coordinator-initial resolution (42 total).
+
 ## [0.10.0] — 2026-06-13 — PDF upload parsing
 
 ### Added

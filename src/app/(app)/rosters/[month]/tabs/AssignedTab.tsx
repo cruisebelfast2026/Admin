@@ -90,6 +90,24 @@ export function AssignedTab({ ctx }: { ctx: MonthContext }) {
     return out;
   }, [staffCols, ctx.ships, availability, assignment]);
 
+  // 10.6 — low-staffing estimate: required ambassador/TA shifts per ship vs the
+  // number of staff who've indicated availability for that ship.
+  const required = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const sh of shifts) {
+      if (sh.role_type === "ambassador" || sh.role_type === "travel_advisor")
+        out[sh.ship_id] = (out[sh.ship_id] ?? 0) + 1;
+    }
+    return out;
+  }, [shifts]);
+
+  function isLowStaffed(ship: Ship): boolean {
+    const req = required[ship.id] ?? 0;
+    if (req === 0) return false;
+    const avail = staffCols.filter((st) => availability[ship.id]?.[st.id]).length;
+    return avail < req;
+  }
+
   async function toggleStatus(ship: Ship, key: StatusKey) {
     await ctx.patchShip(ship, { [key]: !ship[key] } as Partial<Ship>);
   }
@@ -162,7 +180,17 @@ export function AssignedTab({ ctx }: { ctx: MonthContext }) {
                   <td className="px-2 py-1.5 sticky-col font-semibold whitespace-nowrap">
                     {new Date(ship.date + "T00:00:00").toLocaleDateString("en-GB")}
                   </td>
-                  <td className="px-2 py-1.5 font-semibold whitespace-nowrap">{ship.ship_name}</td>
+                  <td className="px-2 py-1.5 font-semibold whitespace-nowrap">
+                    {ship.ship_name}
+                    {isLowStaffed(ship) && (
+                      <span
+                        className="ml-1.5 text-[10px] font-semibold text-amber-700 bg-amber-100 rounded px-1 py-0.5"
+                        title="Available staff may be insufficient to cover required shifts"
+                      >
+                        ⚠ Low
+                      </span>
+                    )}
+                  </td>
                   {STATUS_COLS.map((c) => (
                     <td key={c.key} className="px-2 py-1.5 text-center">
                       <input
