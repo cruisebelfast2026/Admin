@@ -22,8 +22,8 @@ export interface ParsedShipRow {
 const HEADER_ALIASES: Record<keyof Omit<ParsedShipRow, "_warnings">, string[]> = {
   day: ["day", "weekday", "day of week"],
   date: ["date", "call date", "arrival date"],
-  arrival_time: ["arrival", "arrival time", "arr", "eta", "in", "arrive"],
-  departure_time: ["departure", "departure time", "dep", "etd", "out", "depart"],
+  arrival_time: ["arrival time", "arrival", "arrive", "arr", "eta"],
+  departure_time: ["departure time", "departure", "depart", "dep", "etd"],
   cruise_line: ["cruise line", "cruiseline", "company", "line", "operator"],
   ship_name: ["ship name", "ship", "vessel", "vessel name"],
   capacity: ["capacity", "pax", "passengers", "passenger count", "guests"],
@@ -94,7 +94,25 @@ export function parseTime(value: unknown): string | null {
     if (ap === "am" && h === 12) h = 0;
     return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
   }
+  // Colon-less times: "0800" -> 08:00, "620" -> 06:20.
+  const digits = s.replace(/[^\d]/g, "");
+  const m2 = /^(\d{1,2})(\d{2})$/.exec(digits);
+  if (m2) {
+    const h = Number(m2[1]);
+    const mm = Number(m2[2]);
+    if (h < 24 && mm < 60)
+      return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  }
   return null;
+}
+
+/** Split a combined in-port value ("06:20-18:30", "0800 - 1730") into times. */
+export function splitInPort(value: unknown): [string | null, string | null] {
+  const s = String(value ?? "").trim();
+  if (!s) return [null, null];
+  const parts = s.split(/\s*(?:-|–|—|to|until|–|—)\s*/i).filter(Boolean);
+  if (parts.length >= 2) return [parseTime(parts[0]), parseTime(parts[1])];
+  return [parseTime(s), null];
 }
 
 function parseDock(value: unknown): string | null {
@@ -111,6 +129,12 @@ export function parseScheduleRows(
   if (rows.length === 0) return [];
   const headers = Object.keys(rows[0]);
   const map = mapHeaders(headers);
+  // A combined "In Port Times" / "Time in Port" column (e.g. "06:20-18:30").
+  const inPortHeader = headers.find((h) => {
+    const n = norm(h);
+    if (map[h] === "arrival_time" || map[h] === "departure_time") return false;
+    return /in.?port/.test(n) || (/\bport\b/.test(n) && /(time|hour)/.test(n));
+  });
 
   return rows
     .map((row) => {
@@ -159,6 +183,12 @@ export function parseScheduleRows(
             out.ship_name = v ? String(v).trim() : null;
             break;
         }
+      }
+      // Combined in-port column fills any missing arrival/departure.
+      if (inPortHeader && (!out.arrival_time || !out.departure_time)) {
+        const [a, d] = splitInPort(row[inPortHeader]);
+        out.arrival_time = out.arrival_time ?? a;
+        out.departure_time = out.departure_time ?? d;
       }
       if (!out.ship_name) out._warnings.push("Missing ship name");
       if (!out.date) out._warnings.push("Missing date");

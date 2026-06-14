@@ -6,6 +6,15 @@ tab of the application.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.13.1] — 2026-06-14 — Schedule "time in port" parsing
+
+### Fixed
+- Schedule upload now reads a **combined "In Port Times" / "Time in Port"**
+  column (e.g. `06:20-18:30` or `0800 - 1730`) and splits it into arrival /
+  departure, so Time in Port populates on the rosters and rota.
+- Times written **without a colon** (`0800`, `620`) are now parsed.
+- Removed over-broad `in`/`out` header aliases that mis-mapped columns.
+
 ## [0.13.0] — 2026-06-14 — Per-staff availability upload
 
 ### Changed
