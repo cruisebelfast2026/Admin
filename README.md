@@ -83,6 +83,25 @@ Setup works against local state, but nothing is persisted.
    (set a `full_name` in user metadata for the change-log display name).
 6. Copy the project URL and anon key into `.env.local`.
 
+### Creating an admin login
+
+An "admin" is just a confirmed Supabase Auth user (RLS grants every
+authenticated user full access). To add one:
+
+1. **Authentication → Users → Add user → _Create new user_** (not "Send
+   invitation" — only "Create new user" lets you set a password).
+2. Enter the email + a password, and tick **Auto Confirm User** (this skips the
+   confirmation email entirely — the app logs in with email + password, not
+   magic links).
+3. Optionally add user metadata `{ "full_name": "Conor" }` for the change-log
+   name.
+4. **Authentication → URL Configuration**: set **Site URL** to your deployed URL
+   (e.g. `https://cruisebf.com`) and add `https://cruisebf.com/**` to **Redirect
+   URLs**. (If this is unset, Supabase email links fail with
+   `{"error":"requested path is invalid"}`.)
+
+Then sign in at the app URL with that email + password.
+
 ## Deployment (Cloudflare)
 
 The app deploys to **Cloudflare Workers** via the
