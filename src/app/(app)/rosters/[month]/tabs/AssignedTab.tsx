@@ -16,10 +16,19 @@ const ROLE_FILTER: Record<string, (s: Staff) => boolean> = {
 type StatusKey = "info_received" | "rota_sent" | "volunteers_sent" | "confirmed";
 const STATUS_COLS: { key: StatusKey; label: string }[] = [
   { key: "info_received", label: "Info" },
-  { key: "rota_sent", label: "Rota Sent" },
-  { key: "volunteers_sent", label: "Vols Sent" },
-  { key: "confirmed", label: "Confirmed" },
+  { key: "rota_sent", label: "Sent" },
+  { key: "volunteers_sent", label: "Vols" },
+  { key: "confirmed", label: "Conf" },
 ];
+
+// Frozen Date + Ship columns (Ship offset = Date column width).
+const FROZEN_DATE = "sticky left-0 z-10 bg-vb-panel w-[92px]";
+const FROZEN_SHIP = "sticky left-[92px] z-10 bg-vb-panel border-r border-vb-border";
+
+/** Shorten a full AM+PM+EV availability to "ALL". */
+function shortPeriod(p?: string): string {
+  return p === "AM+PM+EV" ? "ALL" : (p ?? "");
+}
 
 export function AssignedTab({ ctx }: { ctx: MonthContext }) {
   // availability: shipId -> staffId -> period
@@ -179,22 +188,23 @@ export function AssignedTab({ ctx }: { ctx: MonthContext }) {
       <p className="text-xs text-vb-muted mb-3">
         Cells: availability period · <span className="bg-yellow-200 px-1 rounded">yellow</span> assigned ·{" "}
         <span className="bg-green-200 px-1 rounded">green</span> confirmed (click to toggle) ·{" "}
-        <span className="text-amber-700 font-semibold">amber border</span> cross-ship same-day conflict.
+        <span className="text-amber-700 font-semibold">amber border</span> cross-ship same-day conflict ·{" "}
+        <strong>ALL</strong> = AM+PM+EV.
       </p>
       <div className="bg-vb-panel rounded-vb border border-vb-border overflow-x-auto">
         <table className="text-xs border-collapse">
           <thead>
             <tr className="border-b border-vb-border">
-              <th className="px-2 py-2 sticky-col text-left font-semibold">Date</th>
-              <th className="px-2 py-2 text-left font-semibold">Ship</th>
+              <th className={`px-1 py-2 ${FROZEN_DATE} text-left font-semibold`}>Date</th>
+              <th className={`px-1 py-2 ${FROZEN_SHIP} text-left font-semibold`}>Ship</th>
               {STATUS_COLS.map((c) => (
-                <th key={c.key} className="px-2 py-2 font-semibold whitespace-nowrap">{c.label}</th>
+                <th key={c.key} className="px-1 py-2 font-semibold whitespace-nowrap">{c.label}</th>
               ))}
-              <th className="px-2 py-2 font-semibold whitespace-nowrap">Shifts</th>
+              <th className="px-1 py-2 font-semibold whitespace-nowrap">Shifts</th>
               {staffCols.map((st) => (
-                <th key={st.id} className="px-2 py-2 font-semibold whitespace-nowrap align-bottom">
-                  <div className="rotate-0">{st.display_name}</div>
-                  <div className="text-[10px] text-vb-muted font-normal">
+                <th key={st.id} className="px-1 py-2 font-semibold align-bottom max-w-[64px]">
+                  <div className="truncate text-[11px]" title={st.display_name}>{st.display_name}</div>
+                  <div className="text-[9px] text-vb-muted font-normal">
                     {stats[st.id]?.assigned ?? 0}/{stats[st.id]?.available ?? 0}
                     {stats[st.id]?.available
                       ? ` · ${Math.round((stats[st.id].assigned / stats[st.id].available) * 100)}%`
@@ -215,7 +225,7 @@ export function AssignedTab({ ctx }: { ctx: MonthContext }) {
               return (
                 <Fragment key={ship.id}>
                 <tr className="border-b border-vb-border last:border-0">
-                  <td className="px-2 py-1.5 sticky-col font-semibold whitespace-nowrap">
+                  <td className={`px-1 py-1.5 ${FROZEN_DATE} font-semibold whitespace-nowrap`}>
                     <button
                       onClick={() => setExpanded(isOpen ? null : ship.id)}
                       className="mr-1 text-vb-muted"
@@ -225,19 +235,19 @@ export function AssignedTab({ ctx }: { ctx: MonthContext }) {
                     </button>
                     {new Date(ship.date + "T00:00:00").toLocaleDateString("en-GB")}
                   </td>
-                  <td className="px-2 py-1.5 font-semibold whitespace-nowrap">
+                  <td className={`px-1 py-1.5 ${FROZEN_SHIP} font-semibold whitespace-nowrap`}>
                     {ship.ship_name}
                     {isLowStaffed(ship) && (
                       <span
-                        className="ml-1.5 text-[10px] font-semibold text-amber-700 bg-amber-100 rounded px-1 py-0.5"
+                        className="ml-1 text-[9px] font-semibold text-amber-700 bg-amber-100 rounded px-1"
                         title="Available staff may be insufficient to cover required shifts"
                       >
-                        ⚠ Low
+                        Low
                       </span>
                     )}
                   </td>
                   {STATUS_COLS.map((c) => (
-                    <td key={c.key} className="px-2 py-1.5 text-center">
+                    <td key={c.key} className="px-1 py-1.5 text-center">
                       <input
                         type="checkbox"
                         checked={Boolean(ship[c.key])}
@@ -246,9 +256,8 @@ export function AssignedTab({ ctx }: { ctx: MonthContext }) {
                       />
                     </td>
                   ))}
-                  <td className="px-2 py-1.5 text-center text-vb-muted whitespace-nowrap">
+                  <td className="px-1 py-1.5 text-center text-vb-muted whitespace-nowrap">
                     {assignedCount}/{availCount}
-                    {availCount ? ` (${Math.round((assignedCount / availCount) * 100)}%)` : ""}
                   </td>
                   {staffCols.map((st) => {
                     const av = availability[ship.id]?.[st.id];
@@ -262,12 +271,12 @@ export function AssignedTab({ ctx }: { ctx: MonthContext }) {
                       <td
                         key={st.id}
                         onClick={() => asg && toggleConfirm(ship, st.id)}
-                        className={`px-2 py-1.5 text-center ${bg} ${
+                        className={`px-1 py-1.5 text-center text-[11px] ${bg} ${
                           conflict ? "border-2 border-amber-500" : ""
                         } ${asg ? "cursor-pointer" : ""}`}
                         title={conflict ? "Conflict: same day/period on another ship" : ""}
                       >
-                        {av ?? ""}
+                        {shortPeriod(av)}
                       </td>
                     );
                   })}
