@@ -47,6 +47,14 @@ describe("combined In Port Times column", () => {
       departure_time: "17:30",
     });
   });
+  it("detects a time-range column by its values even with an odd header", () => {
+    const parsed = parseScheduleRows([
+      { Date: "07/06/2026", Ship: "Arcadia", Schedule: "07:00-18:00" },
+      { Date: "08/06/2026", Ship: "Aurora", Schedule: "08:30-17:45" },
+    ]);
+    expect(parsed[0]).toMatchObject({ arrival_time: "07:00", departure_time: "18:00" });
+    expect(parsed[1]).toMatchObject({ arrival_time: "08:30", departure_time: "17:45" });
+  });
 });
 
 describe("parseScheduleRows", () => {

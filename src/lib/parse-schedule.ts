@@ -130,11 +130,30 @@ export function parseScheduleRows(
   const headers = Object.keys(rows[0]);
   const map = mapHeaders(headers);
   // A combined "In Port Times" / "Time in Port" column (e.g. "06:20-18:30").
-  const inPortHeader = headers.find((h) => {
+  const TIME_RANGE = /\d{1,2}[:.]?\d{2}\s*(?:-|–|—|to|until)\s*\d{1,2}[:.]?\d{2}/i;
+  let inPortHeader = headers.find((h) => {
     const n = norm(h);
     if (map[h] === "arrival_time" || map[h] === "departure_time") return false;
     return /in.?port/.test(n) || (/\bport\b/.test(n) && /(time|hour)/.test(n));
   });
+  // Fallback: detect by content — a column whose values look like time ranges
+  // (e.g. "07:00-18:00"), whatever its header is called.
+  if (!inPortHeader) {
+    for (const h of headers) {
+      if (map[h] === "arrival_time" || map[h] === "departure_time") continue;
+      const samples = rows
+        .slice(0, 10)
+        .map((r) => String(r[h] ?? "").trim())
+        .filter(Boolean);
+      if (
+        samples.length > 0 &&
+        samples.filter((s) => TIME_RANGE.test(s)).length >= Math.ceil(samples.length / 2)
+      ) {
+        inPortHeader = h;
+        break;
+      }
+    }
+  }
 
   return rows
     .map((row) => {
