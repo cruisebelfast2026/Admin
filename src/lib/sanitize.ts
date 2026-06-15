@@ -9,15 +9,19 @@ export function emptyToNull<T>(v: T): T | null {
   return v === "" || v === undefined ? null : v;
 }
 
-/** Convert NaN/"" to null; pass finite numbers through. */
+/** Convert NaN / "" / blank / nullish to null; pass finite numbers through. */
 export function numOrNull(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "string" && v.trim() === "") return null;
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : null;
 }
 
 /**
  * Return a shallow copy with the given keys coerced from "" to null.
- * Useful before insert/upsert of rows that contain time/date columns.
+ * Only keys that are PRESENT on the object and equal to "" are changed —
+ * missing keys are left absent (never injected as null), so this is safe to
+ * use on partial patches.
  */
 export function nullEmpty<T extends Record<string, unknown>>(
   obj: T,
@@ -25,7 +29,7 @@ export function nullEmpty<T extends Record<string, unknown>>(
 ): T {
   const out = { ...obj };
   for (const k of keys) {
-    if (out[k] === "" || out[k] === undefined) out[k] = null as T[keyof T];
+    if (k in out && out[k] === "") out[k] = null as T[keyof T];
   }
   return out;
 }
