@@ -30,11 +30,21 @@ function shortPeriod(p?: string): string {
   return p === "AM+PM+EV" ? "ALL" : (p ?? "");
 }
 
+/** Availability edit options: value -> label. */
+const AVAIL_OPTIONS: [string, string][] = [
+  ["", "—"],
+  ["AM", "AM"],
+  ["PM", "PM"],
+  ["EV", "EV"],
+  ["AM+PM+EV", "ALL"],
+];
+
 export function AssignedTab({ ctx }: { ctx: MonthContext }) {
   // availability: shipId -> staffId -> period
   const [availability, setAvailability] = useState<Record<string, Record<string, string>>>({});
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [editAvail, setEditAvail] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -153,6 +163,31 @@ export function AssignedTab({ ctx }: { ctx: MonthContext }) {
   async function toggleStatus(ship: Ship, key: StatusKey) {
     await ctx.patchShip(ship, { [key]: !ship[key] } as Partial<Ship>);
   }
+
+  // Edit a person's availability for a ship (empty clears it). Only used in
+  // edit mode and never on an assigned cell.
+  async function setAvail(shipId: string, staffId: string, period: string) {
+    setAvailability((prev) => {
+      const ship = { ...(prev[shipId] ?? {}) };
+      if (period) ship[staffId] = period;
+      else delete ship[staffId];
+      return { ...prev, [shipId]: ship };
+    });
+    const supabase = createClient();
+    if (!supabase) return;
+    if (period) {
+      await supabase
+        .from("availability")
+        .upsert({ staff_id: staffId, ship_id: shipId, period }, { onConflict: "staff_id,ship_id" });
+    } else {
+      await supabase
+        .from("availability")
+        .delete()
+        .eq("staff_id", staffId)
+        .eq("ship_id", shipId);
+    }
+    ctx.bumpSync();
+  }
   async function toggleConfirm(ship: Ship, staffId: string) {
     const supabase = createClient();
     const current = assignment[ship.id]?.[staffId];
@@ -191,6 +226,22 @@ export function AssignedTab({ ctx }: { ctx: MonthContext }) {
         <span className="text-amber-700 font-semibold">amber border</span> cross-ship same-day conflict ·{" "}
         <strong>ALL</strong> = AM+PM+EV.
       </p>
+      <div className="flex items-center gap-3 mb-3">
+        <button
+          onClick={() => setEditAvail((e) => !e)}
+          className={`text-sm font-semibold rounded-vb px-4 py-2 ${
+            editAvail ? "bg-vb-teal text-white" : "bg-vb-navy text-white hover:bg-vb-navy-dark"
+          }`}
+        >
+          {editAvail ? "Done editing" : "Edit availability"}
+        </button>
+        {editAvail && (
+          <span className="text-xs text-vb-muted">
+            Change availability in any unassigned cell (empty / AM / PM / EV / ALL).
+            Assigned cells are locked.
+          </span>
+        )}
+      </div>
       <div className="bg-vb-panel rounded-vb border border-vb-border overflow-x-auto">
         <table className="text-xs border-collapse">
           <thead>
@@ -267,6 +318,25 @@ export function AssignedTab({ ctx }: { ctx: MonthContext }) {
                     if (asg?.confirmed) bg = "bg-green-200";
                     else if (asg) bg = "bg-yellow-200";
                     else if (av) bg = "bg-vb-teal-tint";
+                    // Edit mode: unassigned cells become an availability dropdown.
+                    if (editAvail && !asg) {
+                      const opts = AVAIL_OPTIONS.some(([v]) => v === (av ?? ""))
+                        ? AVAIL_OPTIONS
+                        : [...AVAIL_OPTIONS, [av ?? "", av ?? ""] as [string, string]];
+                      return (
+                        <td key={st.id} className={`px-0.5 py-1 text-center ${av ? "bg-vb-teal-tint" : ""}`}>
+                          <select
+                            value={av ?? ""}
+                            onChange={(e) => setAvail(ship.id, st.id, e.target.value)}
+                            className="text-[11px] border border-vb-border rounded bg-white px-0.5 py-0.5"
+                          >
+                            {opts.map(([v, l]) => (
+                              <option key={v || "none"} value={v}>{l}</option>
+                            ))}
+                          </select>
+                        </td>
+                      );
+                    }
                     return (
                       <td
                         key={st.id}
@@ -274,7 +344,13 @@ export function AssignedTab({ ctx }: { ctx: MonthContext }) {
                         className={`px-1 py-1.5 text-center text-[11px] ${bg} ${
                           conflict ? "border-2 border-amber-500" : ""
                         } ${asg ? "cursor-pointer" : ""}`}
-                        title={conflict ? "Conflict: same day/period on another ship" : ""}
+                        title={
+                          asg && editAvail
+                            ? "Assigned — unassign on the rota to edit availability"
+                            : conflict
+                              ? "Conflict: same day/period on another ship"
+                              : ""
+                        }
                       >
                         {shortPeriod(av)}
                       </td>
