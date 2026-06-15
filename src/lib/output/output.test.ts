@@ -12,11 +12,11 @@ describe("time formatters", () => {
     expect(dotRange("08:00", null)).toBe("08.00");
   });
   it("formats time-in-port and date line", () => {
-    expect(portRange("08:00", "17:30")).toBe("0800 - 1730");
+    expect(portRange("08:00", "17:30")).toBe("0800-1730");
     expect(dateLine("2026-06-14")).toBe("Sunday 14th June");
   });
   it("labels buses", () => {
-    expect(busLabel({ bus_type: "double_decker", bus_count: 3 } as RotaShuttleLike)).toBe("x3 DD Buses");
+    expect(busLabel({ bus_type: "double_decker", bus_count: 3 } as RotaShuttleLike)).toBe("X3 DD Buses");
   });
 });
 
@@ -53,25 +53,25 @@ describe("buildRotaAoa", () => {
     staffName: (id) => names[id ?? ""] ?? "—",
   };
 
-  const aoa = buildRotaAoa(data).map((r) => r.join("|"));
+  const text = buildRotaAoa(data).map((r) => r.join("|")).join("\n");
 
   it("renders the header block with dot/port formats", () => {
-    expect(aoa).toContain("DATE||Sunday 14th June");
-    expect(aoa).toContain("SHIP||AMBITION");
-    expect(aoa).toContain("TIME IN PORT||0800 - 1730");
+    expect(text).toContain("DATE||Sunday 14th June");
+    expect(text).toContain("SHIP||AMBITION");
+    expect(text).toContain("TIME IN PORT||0800-1730");
   });
   it("places section labels on the first member row with dot times", () => {
-    expect(aoa).toContain("COORDINATOR||Conor|07.30-12.30|D1");
-    expect(aoa).toContain("AMBASSADORS||Anne|08.15-13.00|D1");
+    expect(text).toContain("COORDINATOR||Conor|07.30-12.30|D1");
+    expect(text).toContain("AMBASSADORS||Anne|08.15-13.00|D1");
   });
   it("shows volunteers with a start time only", () => {
-    expect(aoa).toContain("VOLUNTEERS||Kathryn|08.00|D1");
+    expect(text).toContain("VOLUNTEERS||Kathryn|08.00|D1");
   });
   it("renders the shuttle block and footer", () => {
-    expect(aoa).toContain("||BUSES|TIMES|FREQUENCY");
-    expect(aoa).toContain("SHUTTLES||x3 DD Buses|1st Bus 08.30|Every 20minutes");
-    expect(aoa).toContain("|||Last Bus 17.00|");
-    expect(aoa).toContain("PAYMENT||Included");
-    expect(aoa).toContain("CAPACITY||1700");
+    expect(text).toContain("||BUSES|TIMES|FREQUENCY");
+    expect(text).toContain("SHUTTLES||X3 DD Buses|1st Bus 08.30|Every 20minutes");
+    expect(text).toContain("|||Last Bus 17.00|");
+    expect(text).toContain("PAYMENT||Included");
+    expect(text).toContain("CAPACITY||1700");
   });
 });
