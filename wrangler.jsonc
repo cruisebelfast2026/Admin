@@ -11,6 +11,8 @@
   "observability": {
     "enabled": true
   },
+  // Keep the *.workers.dev URL available (valid cert) alongside the custom domain.
+  "workers_dev": true,
   // Custom domain — Wrangler creates the DNS record + TLS on deploy. The zone
   // (cruisebf.com) must be in the same Cloudflare account.
   "routes": [
