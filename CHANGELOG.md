@@ -6,6 +6,18 @@ tab of the application.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.15.0] — 2026-06-15 — Rota assignment dropdowns
+
+### Changed
+- **Ambassador/TA dropdowns now show only available staff** for that shift's
+  period (plus anyone already assigned). The **override** checkbox still reveals
+  everyone. Coordinators and volunteers are always shown (no availability sheet).
+- Each name shows its **monthly shift count in brackets**, e.g. `Anne S (3)` —
+  live total across the month including the current rota.
+- **Coordinator** row times are now editable.
+- **Travel Advisors**: add (**+ TA**) and remove individual TAs, with editable
+  shift times. Remove (✕) is also available on Ambassador and Volunteer rows.
+
 ## [0.14.0] — 2026-06-14 — Ambassador requirements input
 
 ### Changed

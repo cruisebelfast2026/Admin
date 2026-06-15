@@ -11,7 +11,7 @@ import {
   travelAdvisorShifts,
   type CalcSettings,
 } from "@/lib/rota-calc";
-import { quarterHourOptions, timesOverlap } from "@/lib/time";
+import { addMinutes, quarterHourOptions, timesOverlap } from "@/lib/time";
 import { nullEmpty, numOrNull } from "@/lib/sanitize";
 import { downloadRotaPdf } from "@/lib/output/pdf";
 import { downloadRotaXlsx } from "@/lib/output/xlsx";
@@ -71,16 +71,17 @@ export function RotaPanel({
   const [expanded, setExpanded] = useState(false);
   // staffId -> set of periods they're assigned to on OTHER ships the same day.
   const [elsewhere, setElsewhere] = useState<Record<string, Set<string>>>({});
+  // staffId -> shifts assigned on OTHER ships this month (live total adds this rota).
+  const [otherMonthCounts, setOtherMonthCounts] = useState<Record<string, number>>({});
 
   // Load existing rota data.
   useEffect(() => {
     const supabase = createClient();
     if (!supabase) return;
-    const sameDayShipIds = ctx.ships
-      .filter((s) => s.date === ship.date && s.id !== ship.id)
-      .map((s) => s.id);
+    const monthShipIds = ctx.ships.map((s) => s.id);
+    const shipDate = new Map(ctx.ships.map((s) => [s.id, s.date] as const));
     (async () => {
-      const [sh, bus, avail, coord, others] = await Promise.all([
+      const [sh, bus, avail, coord, monthShifts] = await Promise.all([
         supabase.from("shifts").select("*").eq("ship_id", ship.id),
         supabase.from("shuttles").select("*").eq("ship_id", ship.id).order("sort_order"),
         supabase.from("availability").select("staff_id, period").eq("ship_id", ship.id),
@@ -89,12 +90,12 @@ export function RotaPanel({
           .select("staff_id")
           .eq("date", ship.date)
           .maybeSingle(),
-        sameDayShipIds.length
+        monthShipIds.length
           ? supabase
               .from("shifts")
-              .select("assigned_staff_id, start_time")
-              .in("ship_id", sameDayShipIds)
-          : Promise.resolve({ data: [] as { assigned_staff_id: string | null; start_time: string | null }[] }),
+              .select("assigned_staff_id, start_time, ship_id")
+              .in("ship_id", monthShipIds)
+          : Promise.resolve({ data: [] as { assigned_staff_id: string | null; start_time: string | null; ship_id: string }[] }),
       ]);
       if (sh.data) {
         let next = sh.data as LocalShift[];
@@ -110,14 +111,19 @@ export function RotaPanel({
           );
         setShifts(next);
       }
-      // 9.4.5 — who is already assigned elsewhere the same day, by period.
+      // 9.4.5 conflict flags (same-day other ships) + monthly counts (other ships).
       const elseMap: Record<string, Set<string>> = {};
-      for (const r of (others.data as { assigned_staff_id: string | null; start_time: string | null }[]) ?? []) {
-        if (!r.assigned_staff_id || !r.start_time) continue;
-        const set = (elseMap[r.assigned_staff_id] ??= new Set());
-        for (const p of periodsForStart(r.start_time, settings)) set.add(p);
+      const counts: Record<string, number> = {};
+      for (const r of (monthShifts.data as { assigned_staff_id: string | null; start_time: string | null; ship_id: string }[]) ?? []) {
+        if (!r.assigned_staff_id || r.ship_id === ship.id) continue;
+        counts[r.assigned_staff_id] = (counts[r.assigned_staff_id] ?? 0) + 1;
+        if (shipDate.get(r.ship_id) === ship.date && r.start_time) {
+          const set = (elseMap[r.assigned_staff_id] ??= new Set());
+          for (const p of periodsForStart(r.start_time, settings)) set.add(p);
+        }
       }
       setElsewhere(elseMap);
+      setOtherMonthCounts(counts);
       if (bus.data)
         setShuttles(
           (bus.data as Shuttle[]).map((b) => ({
@@ -257,6 +263,35 @@ export function RotaPanel({
   }
   function updateShift(shiftId: string, patch: Partial<LocalShift>) {
     setShifts((p) => p.map((s) => (s.id === shiftId ? { ...s, ...patch } : s)));
+  }
+  function removeShift(shiftId: string) {
+    setShifts((p) => p.filter((s) => s.id !== shiftId));
+  }
+  function addTA() {
+    const dock = ship.dock ?? "D1";
+    const start = ship.arrival_time
+      ? addMinutes(ship.arrival_time, settings.ta_start_offset_mins)
+      : null;
+    const end = start ? addMinutes(start, settings.ta_duration_hours * 60) : null;
+    setShifts((p) => [
+      ...p,
+      {
+        id: crypto.randomUUID(),
+        role_type: "travel_advisor",
+        shift_number: p.filter((s) => s.role_type === "travel_advisor").length + 1,
+        start_time: start,
+        end_time: end,
+        location: dock,
+        assigned_staff_id: null,
+        confirmed: false,
+      },
+    ]);
+  }
+
+  // Monthly shift count for a staff member: other ships (saved) + this rota (live).
+  function countFor(staffId: string): number {
+    const here = shifts.filter((s) => s.assigned_staff_id === staffId).length;
+    return (otherMonthCounts[staffId] ?? 0) + here;
   }
 
   function addVolunteerRow() {
@@ -424,20 +459,28 @@ export function RotaPanel({
         )}
       </Section>
 
-      {/* Coordinator */}
+      {/* Coordinator — always available; editable times. */}
       <Section title="Coordinator">
         {sectionShifts("coordinator").map((s) => (
-          <ShiftRow key={s.id} shift={s} staff={coordinators} allStaff={ctx.staff} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} />
+          <ShiftRow key={s.id} shift={s} staff={coordinators} allStaff={ctx.staff} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} countFor={countFor} editableTimes />
         ))}
       </Section>
 
-      {/* Travel Advisors */}
-      <Section title="Travel Advisors" action={<AddBtn onClick={generateTAs} label="Auto-generate" />}>
+      {/* Travel Advisors — add/remove, editable times, availability-filtered. */}
+      <Section
+        title="Travel Advisors"
+        action={
+          <div className="flex gap-3">
+            <AddBtn onClick={addTA} label="+ TA" />
+            <AddBtn onClick={generateTAs} label="Auto-generate" />
+          </div>
+        }
+      >
         {sectionShifts("travel_advisor").length === 0 ? (
-          <Empty>Auto-generate TA shifts (arrival + 30 min, 4h; 2 TAs if capacity ≥ {settings.ta_capacity_threshold}).</Empty>
+          <Empty>Add a TA, or auto-generate (arrival + 30 min, 4h; 2 TAs if capacity ≥ {settings.ta_capacity_threshold}).</Empty>
         ) : (
           sectionShifts("travel_advisor").map((s) => (
-            <ShiftRow key={s.id} shift={s} staff={travelAdvisors} allStaff={ctx.staff} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} />
+            <ShiftRow key={s.id} shift={s} staff={travelAdvisors} allStaff={ctx.staff} onAssign={setAssignment} onChange={updateShift} onRemove={removeShift} availability={availability} elsewhere={elsewhere} settings={settings} countFor={countFor} availabilityRequired editableTimes />
           ))
         )}
       </Section>
@@ -474,7 +517,7 @@ export function RotaPanel({
           <div className="border-t border-vb-border pt-2">
             <p className="text-[11px] font-semibold text-vb-muted mb-1">Generated shifts</p>
             {sectionShifts("ambassador").map((s) => (
-              <ShiftRow key={s.id} shift={s} staff={ambassadors} allStaff={ctx.staff} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} editableTimes />
+              <ShiftRow key={s.id} shift={s} staff={ambassadors} allStaff={ctx.staff} onAssign={setAssignment} onChange={updateShift} onRemove={removeShift} availability={availability} elsewhere={elsewhere} settings={settings} countFor={countFor} availabilityRequired editableTimes />
             ))}
           </div>
         )}
@@ -486,7 +529,7 @@ export function RotaPanel({
           <Empty>Add up to 3 volunteers. Start time defaults to the first ambassador shift.</Empty>
         ) : (
           sectionShifts("volunteer").map((s) => (
-            <ShiftRow key={s.id} shift={s} staff={volunteers} allStaff={ctx.staff} onAssign={setAssignment} onChange={updateShift} availability={availability} elsewhere={elsewhere} settings={settings} noEnd />
+            <ShiftRow key={s.id} shift={s} staff={volunteers} allStaff={ctx.staff} onAssign={setAssignment} onChange={updateShift} onRemove={removeShift} availability={availability} elsewhere={elsewhere} settings={settings} countFor={countFor} noEnd />
           ))
         )}
       </Section>
@@ -596,9 +639,12 @@ function ShiftRow({
   allStaff,
   onAssign,
   onChange,
+  onRemove,
   availability,
   elsewhere,
   settings,
+  countFor,
+  availabilityRequired,
   editableTimes,
   noEnd,
 }: {
@@ -607,26 +653,32 @@ function ShiftRow({
   allStaff: Staff[];
   onAssign: (id: string, staffId: string | null) => void;
   onChange: (id: string, patch: Partial<LocalShift>) => void;
+  onRemove?: (id: string) => void;
   availability: Record<string, string>;
   elsewhere: Record<string, Set<string>>;
   settings: CalcSettings;
+  countFor: (staffId: string) => number;
+  /** Only show staff marked available for this shift's period (Ambassadors/TAs). */
+  availabilityRequired?: boolean;
   editableTimes?: boolean;
   noEnd?: boolean;
 }) {
   // 6.2/16.2 — override expands the pool to all active staff (e.g. assign a
-  // Travel Advisor to an Ambassador slot).
+  // Travel Advisor to an Ambassador slot, or someone not marked available).
   const [override, setOverride] = useState(false);
-  const pool = override ? allStaff : staff;
 
-  // Filter to staff available for the shift's period (Section 9.4.5).
   const eligible = useMemo(() => {
-    if (!shift.start_time) return pool;
-    return pool.filter((s) => {
+    if (override) return allStaff;
+    if (!availabilityRequired) return staff;
+    // Ambassadors/TAs: only those who marked availability covering this period
+    // (plus whoever is already assigned, so their name still shows).
+    return staff.filter((s) => {
+      if (s.id === shift.assigned_staff_id) return true;
       const avail = availability[s.id];
-      if (!avail) return true; // no availability data → show all
-      return availabilityCoversShift(avail, shift.start_time!);
+      if (!avail) return false;
+      return shift.start_time ? availabilityCoversShift(avail, shift.start_time) : true;
     });
-  }, [pool, availability, shift.start_time]);
+  }, [override, availabilityRequired, allStaff, staff, availability, shift.start_time, shift.assigned_staff_id]);
 
   // 9.4.5 — flag staff already assigned elsewhere the same day/period.
   const shiftPeriods = shift.start_time ? periodsForStart(shift.start_time, settings) : [];
@@ -651,7 +703,7 @@ function ShiftRow({
         {eligible.map((s) => (
           <option key={s.id} value={s.id}>
             {assignedElsewhere(s.id) ? "⚠ " : ""}
-            {s.display_name}
+            {s.display_name} ({countFor(s.id)})
           </option>
         ))}
       </select>
@@ -677,10 +729,16 @@ function ShiftRow({
         {LOCATIONS.map((l) => <option key={l} value={l}>{l}</option>)}
       </select>
 
-      <label className="flex items-center gap-1 text-[11px] text-vb-muted" title="Show all staff regardless of role (e.g. assign a TA as Ambassador)">
+      <label className="flex items-center gap-1 text-[11px] text-vb-muted" title="Show all staff regardless of role/availability">
         <input type="checkbox" checked={override} onChange={(e) => setOverride(e.target.checked)} className="accent-vb-teal w-3.5 h-3.5" />
         override
       </label>
+
+      {onRemove && (
+        <button onClick={() => onRemove(shift.id)} className="text-red-600 hover:text-red-700 text-sm px-1" title="Remove shift">
+          ✕
+        </button>
+      )}
     </div>
   );
 }
